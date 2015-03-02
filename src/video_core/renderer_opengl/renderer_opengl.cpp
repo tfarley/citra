@@ -10,7 +10,26 @@
 #include "video_core/renderer_opengl/gl_shader_util.h"
 #include "video_core/renderer_opengl/gl_shaders.h"
 
+#include "video_core/pica.h"
+#include "video_core/shader_translator.h"
+#include "video_core/vertex_shader.h"
+#include "video_core/debug_utils/debug_utils.h"
+
 #include <algorithm>
+
+std::map<u8 *, GLuint> g_tex_cache;
+u8 *g_cur_tex_data[3];
+
+GLuint g_cur_shader = -1;
+u32 g_cur_shader_main = -1;
+std::map<u32, GLuint> g_shader_cache;
+
+std::vector<RawVertex> g_vertex_batch;
+
+bool g_did_render;
+
+u32 g_first_fb = -1;
+u32 g_last_fb = -1;
 
 /**
  * Vertex structure that the drawn screen rectangles are composed of.
@@ -56,11 +75,19 @@ RendererOpenGL::~RendererOpenGL() {
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
+#ifdef USE_OGL_RENDERER
+    if (!g_did_render)
+        return;
+
+    g_did_render = 0;
+#endif // #ifndef USE_OGL_RENDERER
+
     render_window->MakeCurrent();
 
+#ifndef USE_OGL_RENDERER
     for(int i : {0, 1}) {
         const auto& framebuffer = GPU::g_regs.framebuffer_config[i];
-
+    
         if (textures[i].width != (GLsizei)framebuffer.width ||
             textures[i].height != (GLsizei)framebuffer.height ||
             textures[i].format != framebuffer.color_format) {
@@ -69,15 +96,23 @@ void RendererOpenGL::SwapBuffers() {
             // performance problem.
             ConfigureFramebufferTexture(textures[i], framebuffer);
         }
-
+    
         LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
     }
 
     DrawScreens();
+#else // #ifndef USE_OGL_RENDERER
+    glFlush();
+    glFinish();
+#endif // #ifndef USE_OGL_RENDERER
 
     // Swap buffers
     render_window->PollEvents();
     render_window->SwapBuffers();
+
+#ifdef USE_OGL_RENDERER
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#endif // #ifndef USE_OGL_RENDERER
 }
 
 /**
@@ -126,6 +161,7 @@ void RendererOpenGL::LoadFBToActiveGLTexture(const GPU::Regs::FramebufferConfig&
  * Initializes the OpenGL state and creates persistent objects.
  */
 void RendererOpenGL::InitOpenGLObjects() {
+#ifndef USE_OGL_RENDERER
     glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
     glDisable(GL_DEPTH_TEST);
 
@@ -166,6 +202,18 @@ void RendererOpenGL::InitOpenGLObjects() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     glBindTexture(GL_TEXTURE_2D, 0);
+#else // #ifndef USE_OGL_RENDERER
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+    glGenBuffers(1, &hw_vertex_buffer_handle);
+
+    // Generate VAO
+    glGenVertexArrays(1, &hw_vertex_array_handle);
+    glBindVertexArray(hw_vertex_array_handle);
+
+    // Attach vertex data to VAO
+    glBindBuffer(GL_ARRAY_BUFFER, hw_vertex_buffer_handle);
+#endif // #ifndef USE_OGL_RENDERER
 }
 
 void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
@@ -266,6 +314,301 @@ void RendererOpenGL::DrawScreens() {
         (float)VideoCore::kScreenBottomWidth, (float)VideoCore::kScreenBottomHeight);
 
     m_current_frame++;
+}
+
+GLenum PICABlendFactorToOpenGL(u32 factor)
+{
+    switch (factor) {
+    case Pica::registers.output_merger.alpha_blending.Zero:
+        return GL_ZERO;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.One:
+        return GL_ONE;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.SourceColor:
+        return GL_SRC_COLOR;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.OneMinusSourceColor:
+        return GL_ONE_MINUS_SRC_COLOR;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.DestColor:
+        return GL_DST_COLOR;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.OneMinusDestColor:
+        return GL_ONE_MINUS_DST_COLOR;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.SourceAlpha:
+        return GL_SRC_ALPHA;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.OneMinusSourceAlpha:
+        return GL_ONE_MINUS_SRC_ALPHA;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.DestAlpha:
+        return GL_DST_ALPHA;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.OneMinusDestAlpha:
+        return GL_ONE_MINUS_DST_ALPHA;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.ConstantColor:
+        return GL_CONSTANT_COLOR;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.OneMinusConstantColor:
+        return GL_ONE_MINUS_CONSTANT_COLOR;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.ConstantAlpha:
+        return GL_CONSTANT_ALPHA;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.OneMinusConstantAlpha:
+        return GL_ONE_MINUS_CONSTANT_ALPHA;
+        break;
+
+    case Pica::registers.output_merger.alpha_blending.SourceAlphaSaturate:
+        return GL_SRC_ALPHA_SATURATE;
+        break;
+
+    default:
+        LOG_ERROR(Render_OpenGL, "Unknown blend factor %d", Pica::registers.output_merger.alpha_blending.factor_source_a.Value());
+        return GL_ONE;
+        break;
+    }
+}
+
+void RendererOpenGL::BeginBatch() {
+    render_window->MakeCurrent();
+
+    if (Pica::registers.output_merger.depth_test_enable.Value()) {
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
+
+    switch (Pica::registers.output_merger.depth_test_func.Value()) {
+    case Pica::registers.output_merger.Never:
+        glDepthFunc(GL_NEVER);
+        break;
+
+    case Pica::registers.output_merger.Always:
+        glDepthFunc(GL_ALWAYS);
+        break;
+
+    case Pica::registers.output_merger.Equal:
+        glDepthFunc(GL_EQUAL);
+        break;
+
+    case Pica::registers.output_merger.NotEqual:
+        glDepthFunc(GL_NOTEQUAL);
+        break;
+
+    case Pica::registers.output_merger.LessThan:
+        glDepthFunc(GL_LESS);
+        break;
+
+    case Pica::registers.output_merger.LessThanOrEqual:
+        glDepthFunc(GL_LEQUAL);
+        break;
+
+    case Pica::registers.output_merger.GreaterThan:
+        glDepthFunc(GL_GREATER);
+        break;
+
+    case Pica::registers.output_merger.GreaterThanOrEqual:
+        glDepthFunc(GL_GEQUAL);
+        break;
+
+    default:
+        LOG_ERROR(Render_OpenGL, "Unknown depth test function %d", Pica::registers.output_merger.depth_test_func.Value());
+        break;
+    }
+
+    // TODO: messes everything up
+    //if (Pica::registers.output_merger.depth_write_enable.Value()) {
+    //    glDepthMask(GL_TRUE);
+    //} else {
+    //    glDepthMask(GL_FALSE);
+    //}
+
+    // TODO: on ogl v3 needs to be taken care of in shader instead
+    // also registers.output_merger.alpha_test.func
+    //if (Pica::registers.output_merger.alpha_test.enable.Value()) {
+    //    glEnable(GL_ALPHA_TEST);
+    //} else {
+    //    glDisable(GL_ALPHA_TEST);
+    //}
+
+    if (Pica::registers.output_merger.alphablend_enable.Value()) {
+        glEnable(GL_BLEND);
+    } else {
+        glDisable(GL_BLEND);
+    }
+
+    glBlendColor(Pica::registers.output_merger.blend_const.r, Pica::registers.output_merger.blend_const.g, Pica::registers.output_merger.blend_const.b, Pica::registers.output_merger.blend_const.a);
+
+    GLenum src_blend_rgb = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_source_rgb.Value());
+    GLenum dst_blend_rgb = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_dest_rgb.Value());
+    GLenum src_blend_a = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_source_a.Value());
+    GLenum dst_blend_a = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_dest_a.Value());
+
+    glBlendFuncSeparate(src_blend_rgb, dst_blend_rgb, src_blend_a, dst_blend_a);
+
+    auto pica_textures = Pica::registers.GetTextures();
+
+    // Uncomment to get shader translator output
+    //FILE* outfile = fopen("shaderdecomp.txt", "w");
+    //fwrite(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).length(), 1, outfile);
+    //fclose(outfile);
+    //exit(0);
+
+    // Switch shaders
+    if (g_cur_shader_main != Pica::registers.vs_main_offset) {
+        g_cur_shader_main = Pica::registers.vs_main_offset;
+
+        std::map<u32, GLuint>::iterator cachedShader = g_shader_cache.find(Pica::registers.vs_main_offset);
+        if (cachedShader != g_shader_cache.end()) {
+            g_cur_shader = cachedShader->second;
+        } else {
+            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw);
+            g_shader_cache.insert(std::pair<u32, GLuint>(Pica::registers.vs_main_offset, g_cur_shader));
+        }
+
+        glUseProgram(g_cur_shader);
+
+        // TODO: probably a bunch of redundant stuff in here
+        attrib_v = glGetAttribLocation(g_cur_shader, "v");
+
+        uniform_c = glGetUniformLocation(g_cur_shader, "c");
+        uniform_b = glGetUniformLocation(g_cur_shader, "b");
+        uniform_i = glGetUniformLocation(g_cur_shader, "i");
+
+        uniform_tex = glGetUniformLocation(g_cur_shader, "tex");
+
+        glUniform1i(uniform_tex, 0);
+        glUniform1i(uniform_tex + 1, 1);
+        glUniform1i(uniform_tex + 2, 2);
+
+        for (int i = 0; i < 8; i++) {
+            glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
+            glEnableVertexAttribArray(attrib_v + i);
+        }
+    }
+
+    // Upload or use textures
+    for (int i = 0; i < 3; ++i) {
+        // TODO: make this not just grab the first texture
+        const auto& cur_texture = pica_textures[i];
+        if (cur_texture.enabled) {
+            u8* texture_data = Memory::GetPointer(Pica::PAddrToVAddr(cur_texture.config.GetPhysicalAddress()));
+            if (g_cur_tex_data[i] != texture_data) {
+                g_cur_tex_data[i] = texture_data;
+
+                if (i == 0) {
+                    glActiveTexture(GL_TEXTURE0);
+                } else if (i == 1) {
+                    glActiveTexture(GL_TEXTURE1);
+                } else {
+                    glActiveTexture(GL_TEXTURE2);
+                }
+
+                std::map<u8*, GLuint>::iterator cached_tex = g_tex_cache.find(texture_data);
+                if (cached_tex != g_tex_cache.end()) {
+                    glBindTexture(GL_TEXTURE_2D, cached_tex->second);
+                } else {
+                    GLuint new_tex_handle;
+                    glGenTextures(1, &new_tex_handle);
+                    glBindTexture(GL_TEXTURE_2D, new_tex_handle);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, cur_texture.config.wrap_s == Pica::Regs::TextureConfig::WrapMode::ClampToEdge ? GL_CLAMP_TO_EDGE : (cur_texture.config.wrap_s == Pica::Regs::TextureConfig::WrapMode::Repeat ? GL_REPEAT : GL_MIRRORED_REPEAT));
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, cur_texture.config.wrap_t == Pica::Regs::TextureConfig::WrapMode::ClampToEdge ? GL_CLAMP_TO_EDGE : (cur_texture.config.wrap_t == Pica::Regs::TextureConfig::WrapMode::Repeat ? GL_REPEAT : GL_MIRRORED_REPEAT));
+
+                    Math::Vec4<u8>* rgba_tex = new Math::Vec4<u8>[cur_texture.config.width * cur_texture.config.height];
+
+                    auto info = Pica::DebugUtils::TextureInfo::FromPicaRegister(cur_texture.config, cur_texture.format);
+
+                    for (int i = 0; i < info.width; i++)
+                    {
+                        for (int j = 0; j < info.height; j++)
+                        {
+                            rgba_tex[i + info.width * j] = Pica::DebugUtils::LookupTexture(texture_data, i, info.height - 1 - j, info);
+                        }
+                    }
+
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, info.width, info.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_tex);
+
+                    delete rgba_tex;
+
+                    g_tex_cache.insert(std::pair<u8*, GLuint>(texture_data, new_tex_handle));
+                }
+            }
+        }
+    }
+}
+
+void RendererOpenGL::DrawTriangle(const RawVertex& v0, const RawVertex& v1, const RawVertex& v2) {
+    g_vertex_batch.push_back(v0);
+    g_vertex_batch.push_back(v1);
+    g_vertex_batch.push_back(v2);
+}
+
+void RendererOpenGL::EndBatch() {
+    render_window->MakeCurrent();
+
+    u32 cur_fb = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
+
+    if (g_first_fb == -1) {
+        // HACK: just keeps first fb addr to differentiate top/bot screens
+        g_first_fb = cur_fb;
+    }
+
+    if (g_last_fb != cur_fb) {
+        auto viewport_extent = GetViewportExtent();
+
+        if (Pica::registers.framebuffer.GetColorBufferPhysicalAddress() == g_first_fb) {
+            glViewport(viewport_extent.left, viewport_extent.top + viewport_extent.GetHeight() / 2, viewport_extent.GetWidth(), viewport_extent.GetHeight() / 2);
+        } else {
+            float bottom_width = viewport_extent.GetWidth() * ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);
+            float bottom_height = viewport_extent.GetHeight() / 2 * ((float)VideoCore::kScreenBottomHeight / (float)VideoCore::kScreenTopHeight);
+            glViewport(viewport_extent.left + (viewport_extent.GetWidth() - bottom_width) / 2, viewport_extent.top, bottom_width, bottom_height);
+        }
+
+        g_last_fb = cur_fb;
+    }
+
+    glBindBuffer(GL_ARRAY_BUFFER, hw_vertex_buffer_handle);
+    glBufferData(GL_ARRAY_BUFFER, g_vertex_batch.size() * sizeof(RawVertex), g_vertex_batch.data(), GL_STREAM_DRAW);
+
+    glDrawArrays(GL_TRIANGLES, 0, g_vertex_batch.size());
+    g_vertex_batch.clear();
+
+    g_did_render = 1;
+}
+
+void RendererOpenGL::SetUniformBool(u32 index, int value) {
+    render_window->MakeCurrent();
+    glUniform1i(uniform_b + index, value);
+}
+
+void RendererOpenGL::SetUniformInts(u32 index, const u32* values) {
+    render_window->MakeCurrent();
+    glUniform4iv(uniform_i + index, 1, (const GLint*)values);
+}
+
+void RendererOpenGL::SetUniformFloats(u32 index, const float* values) {
+    render_window->MakeCurrent();
+    glUniform4fv(uniform_c + index, 1, values);
 }
 
 /// Updates the framerate
