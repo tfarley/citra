@@ -223,49 +223,49 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
         {
         case nihstro::Instruction::OpCode::ADD:
         {
-            sprintf(instr_text, "%s = %s + %s;\n", dst, src1, src2);
+            sprintf(instr_text, "%s = %s + %s;\n", dst.c_str(), src1.c_str(), src2.c_str());
             break;
         }
 
         case nihstro::Instruction::OpCode::DP3:
         {
-            sprintf(instr_text, "%s = dot(%s, %s);\n", dst, src1, src2);
+            sprintf(instr_text, "%s = dot(%s, %s);\n", dst.c_str(), src1.c_str(), src2.c_str());
             break;
         }
 
         case nihstro::Instruction::OpCode::DP4:
         {
-            sprintf(instr_text, "%s = dot(%s, %s);\n", dst, src1, src2);
+            sprintf(instr_text, "%s = dot(%s, %s);\n", dst.c_str(), src1.c_str(), src2.c_str());
             break;
         }
 
         case nihstro::Instruction::OpCode::MUL:
         {
-            sprintf(instr_text, "%s = %s * %s;\n", dst, src1, src2);
+            sprintf(instr_text, "%s = %s * %s;\n", dst.c_str(), src1.c_str(), src2.c_str());
             break;
         }
 
         case nihstro::Instruction::OpCode::MAX:
         {
-            sprintf(instr_text, "%s = max(%s, %s);\n", dst, src1, src2);
+            sprintf(instr_text, "%s = max(%s, %s);\n", dst.c_str(), src1.c_str(), src2.c_str());
             break;
         }
 
         case nihstro::Instruction::OpCode::MIN:
         {
-            sprintf(instr_text, "%s = min(%s, %s);\n", dst, src1, src2);
+            sprintf(instr_text, "%s = min(%s, %s);\n", dst.c_str(), src1.c_str(), src2.c_str());
             break;
         }
 
         case nihstro::Instruction::OpCode::RCP:
         {
-            sprintf(instr_text, "%s = 1 / %s;\n", dst, src1);
+            sprintf(instr_text, "%s = 1 / %s;\n", dst.c_str(), src1.c_str());
             break;
         }
 
         case nihstro::Instruction::OpCode::RSQ:
         {
-            sprintf(instr_text, "%s = inversesqrt(%s);\n", dst, src1);
+            sprintf(instr_text, "%s = inversesqrt(%s);\n", dst.c_str(), src1.c_str());
             break;
         }
 
@@ -273,13 +273,13 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
         {
             u32 maskSz = GetRegMaskLen(swizzle_data[instr.common.operand_desc_id.Value()]);
             if (maskSz == 2) {
-                sprintf(instr_text, "idx.xy = ivec2(%s);\n", src1);
+                sprintf(instr_text, "idx.xy = ivec2(%s);\n", src1.c_str());
             } else if (maskSz == 3) {
-                sprintf(instr_text, "idx.xyz = ivec3(%s);\n", src1);
+                sprintf(instr_text, "idx.xyz = ivec3(%s);\n", src1.c_str());
             } else if (maskSz == 4) {
-                sprintf(instr_text, "idx.xyzw = ivec4(%s);\n", src1);
+                sprintf(instr_text, "idx.xyzw = ivec4(%s);\n", src1.c_str());
             } else {
-                sprintf(instr_text, "idx.x = int(%s);\n", src1);
+                sprintf(instr_text, "idx.x = int(%s);\n", src1.c_str());
             }
 
             break;
@@ -287,16 +287,16 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
 
         case nihstro::Instruction::OpCode::MOV:
         {
-            sprintf(instr_text, "%s = %s;\n", dst, src1);
+            sprintf(instr_text, "%s = %s;\n", dst.c_str(), src1.c_str());
             break;
         }
 
         case nihstro::Instruction::OpCode::CMP:
         {
-            sprintf(instr_text, "%s.x %s %s.x", src1, instr.common.compare_op.ToString(instr.common.compare_op.x), src2);
+            sprintf(instr_text, "%s.x %s %s.x", src1.c_str(), instr.common.compare_op.ToString(instr.common.compare_op.x).c_str(), src2.c_str());
             g_cmp_strings[0] = instr_text;
 
-            sprintf(instr_text, "%s.y %s %s.y", src1, instr.common.compare_op.ToString(instr.common.compare_op.y), src2);
+            sprintf(instr_text, "%s.y %s %s.y", src1.c_str(), instr.common.compare_op.ToString(instr.common.compare_op.y).c_str(), src2.c_str());
             g_cmp_strings[1] = instr_text;
 
             sprintf(instr_text, "// Culled CMP\n");
@@ -323,7 +323,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
         {
             std::map<u32, std::string>::iterator call_offset = g_fn_offset_map.find(instr.flow_control.dest_offset.Value());
             if (call_offset != g_fn_offset_map.end()) {
-                sprintf(instr_text, "%s();\n", call_offset->second);
+                sprintf(instr_text, "%s();\n", call_offset->second.c_str());
             } else {
                 sprintf(instr_text, "// CALL to unknown offset\n");
             }
@@ -340,19 +340,19 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
                 switch (instr.flow_control.op)
                 {
                 case nihstro::Instruction::FlowControlType::Or:
-                    sprintf(instr_text, "if (%c(%s) || %c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second);
+                    sprintf(instr_text, "if (%c(%s) || %c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second.c_str());
                     break;
 
                 case nihstro::Instruction::FlowControlType::And:
-                    sprintf(instr_text, "if (%c(%s) && %c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second);
+                    sprintf(instr_text, "if (%c(%s) && %c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second.c_str());
                     break;
 
                 case nihstro::Instruction::FlowControlType::JustX:
-                    sprintf(instr_text, "if (%c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), call_offset->second);
+                    sprintf(instr_text, "if (%c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), call_offset->second.c_str());
                     break;
 
                 case nihstro::Instruction::FlowControlType::JustY:
-                    sprintf(instr_text, "if (%c(%s)) { %s(); }\n", negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second);
+                    sprintf(instr_text, "if (%c(%s)) { %s(); }\n", negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second.c_str());
                     break;
 
                 default:
@@ -423,7 +423,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
         {
             std::map<u32, std::string>::iterator call_offset = g_fn_offset_map.find(instr.flow_control.dest_offset.Value());
             if (call_offset != g_fn_offset_map.end()) {
-                sprintf(instr_text, "if (b[%d]) { %s(); }\n", instr.flow_control.bool_uniform_id.Value(), call_offset->second);
+                sprintf(instr_text, "if (b[%d]) { %s(); }\n", instr.flow_control.bool_uniform_id.Value(), call_offset->second.c_str());
             } else {
                 sprintf(instr_text, "// CALLU to unknown offset\n");
             }
@@ -465,7 +465,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
             break;
 
         case nihstro::Instruction::OpCode::MAD:
-            sprintf(instr_text, "%s = %s * %s + %s;\n", dst, src1, src2, src3);
+            sprintf(instr_text, "%s = %s * %s + %s;\n", dst.c_str(), src1.c_str(), src2.c_str(), src3.c_str());
             break;
 
         default:
