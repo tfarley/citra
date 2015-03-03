@@ -593,7 +593,8 @@ void RendererOpenGL::EndBatch() {
         g_first_fb = cur_fb;
     }
 
-    if (g_last_fb != cur_fb) {
+    // TODO: reimplement when actual fb switch can be caught - currently every-frame hack for cave story resolution
+    //if (g_last_fb != cur_fb) {
         auto viewport_extent = GetViewportExtent();
 
         if (Pica::registers.framebuffer.GetColorBufferPhysicalAddress() == g_first_fb) {
@@ -605,7 +606,7 @@ void RendererOpenGL::EndBatch() {
         }
 
         g_last_fb = cur_fb;
-    }
+    //}
 
     glBindBuffer(GL_ARRAY_BUFFER, hw_vertex_buffer_handle);
     glBufferData(GL_ARRAY_BUFFER, g_vertex_batch.size() * sizeof(RawVertex), g_vertex_batch.data(), GL_STREAM_DRAW);
