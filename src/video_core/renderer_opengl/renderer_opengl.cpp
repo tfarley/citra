@@ -479,7 +479,11 @@ void RendererOpenGL::BeginBatch() {
         if (cachedShader != g_shader_cache.end()) {
             g_cur_shader = cachedShader->second;
         } else {
-            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw);
+#ifdef IS_CAVE_STORY
+            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw_cavestory);
+#else
+            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw_oot);
+#endif
             g_shader_cache.insert(std::pair<u32, GLuint>(Pica::registers.vs_main_offset, g_cur_shader));
         }
 

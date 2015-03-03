@@ -16,6 +16,8 @@
 
 #define USE_OGL_RENDERER
 
+//#define IS_CAVE_STORY
+
 class EmuWindow;
 
 struct RawVertex {

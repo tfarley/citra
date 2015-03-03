@@ -5,8 +5,12 @@
 #include "math.h"
 #include "pica.h"
 #include "shader_translator.h"
+#include "video_core.h"
+#include "renderer_opengl/renderer_opengl.h"
 
 #include "nihstro/shader_bytecode.h"
+
+#include "common/string_util.h"
 
 const char g_glsl_shader_header[] = R"(#version 150
 
@@ -23,10 +27,6 @@ uniform int i[4];
 vec4 r[16];
 ivec4 idx;
 
-)";
-
-const char g_glsl_main_header[] = R"(
-void main(void) {
 )";
 
 class IfElseData
@@ -487,9 +487,11 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
     std::string glsl_shader(g_glsl_shader_header);
 
     int fn_counter = 0;
-    int nest_depth = 1;
+    int nest_depth = 0;
+    bool main_opened = false;
     bool main_closed = false;
     u32 main_end_offset = 0;
+    bool last_was_nop = false;
 
     g_if_else_offset_stack.clear();
     g_fn_offset_map.clear();
@@ -508,8 +510,6 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
             }
         }
     }
-
-    glsl_shader += g_glsl_main_header;
 
     // Second pass: translate instructions
     for (int i = 0; i < 1024; ++i) {
@@ -550,13 +550,6 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
         // Consume function offset if points to current offset
         std::map<u32, std::string>::iterator fn_offset = g_fn_offset_map.find(i);
         if (fn_offset != g_fn_offset_map.end()) {
-            if (!main_closed) {
-                glsl_shader += std::string(nest_depth, '\t') + fn_offset->second + "();\n";
-                if (main_end_offset == 0) {
-                    main_end_offset = glsl_shader.length();
-                }
-            }
-
             if (nest_depth > 0) {
                 nest_depth--;
                 glsl_shader += std::string(nest_depth, '\t') + "}\n\n";
@@ -565,12 +558,18 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
             glsl_shader += std::string(nest_depth, '\t') + "void " + fn_offset->second + "() {\n";
             nest_depth++;
         }
+        else if (nest_depth == 0 && !main_opened) {
+            glsl_shader += std::string(nest_depth, '\t') + "void main() {\n";
+            nest_depth++;
+
+            main_opened = true;
+        }
 
         // Translate instruction at current offset
         nihstro::Instruction instr = ((nihstro::Instruction*)shader_data)[i];
 
         if (instr.opcode == nihstro::Instruction::OpCode::END) {
-            if (nest_depth > 0 && main_end_offset == 0) {
+            if (nest_depth > 0) {
                 main_closed = true;
                 glsl_shader += std::string(nest_depth, '\t') + "gl_Position = vec4(-o[0].y, o[0].x, -o[0].z, o[0].w);\n}// END\n";
                 nest_depth--;
@@ -578,7 +577,22 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
                 glsl_shader += "\n";
             }
         } else if (instr.opcode == nihstro::Instruction::OpCode::NOP) {
-            glsl_shader += std::string(nest_depth, '\t') + "// NOP\n";
+            if (!main_opened) {
+                //HACK: treat double-nop as end of function for cave story (since functions are ABOVE main())
+                if (last_was_nop) {
+                    if (nest_depth > 0) {
+                        nest_depth--;
+                        glsl_shader += std::string(nest_depth, '\t') + "}\n\n";
+                    }
+
+                    last_was_nop = false;
+                } else {
+                    glsl_shader += std::string(nest_depth, '\t') + "// NOP\n";
+                    last_was_nop = true;
+                }
+            } else {
+                glsl_shader += std::string(nest_depth, '\t') + "// NOP\n";
+            }
         } else {
             glsl_shader += std::string(nest_depth, '\t') + PICAInstrToGLSL(instr, swizzle_data);
 
@@ -588,9 +602,16 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
                 nest_depth++;
             }
         }
+
+        if (main_opened && !main_closed) {
+            main_end_offset = glsl_shader.length();
+        }
     }
 
-    glsl_shader += "}\n";
+    // Close function if it was last thing
+    if (nest_depth > 0) {
+        glsl_shader += "}\n";
+    }
 
     if (!main_closed) {
         glsl_shader.insert(main_end_offset, "\tgl_Position = vec4(-o[0].y, o[0].x, -o[0].z, o[0].w);\n");
