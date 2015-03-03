@@ -479,11 +479,8 @@ void RendererOpenGL::BeginBatch() {
         if (cachedShader != g_shader_cache.end()) {
             g_cur_shader = cachedShader->second;
         } else {
-#ifdef IS_CAVE_STORY
-            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw_cavestory);
-#else
-            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw_oot);
-#endif
+            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw);
+
             g_shader_cache.insert(std::pair<u32, GLuint>(Pica::registers.vs_main_offset, g_cur_shader));
         }
 
@@ -497,6 +494,7 @@ void RendererOpenGL::BeginBatch() {
         uniform_i = glGetUniformLocation(g_cur_shader, "i");
 
         uniform_tex = glGetUniformLocation(g_cur_shader, "tex");
+        uniform_out_maps = glGetUniformLocation(g_cur_shader, "out_maps");
 
         glUniform1i(uniform_tex, 0);
         glUniform1i(uniform_tex + 1, 1);
@@ -506,6 +504,24 @@ void RendererOpenGL::BeginBatch() {
             glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
             glEnableVertexAttribArray(attrib_v + i);
         }
+    }
+
+    for (int i = 0; i < 7; ++i) {
+        const auto& output_register_map = Pica::registers.vs_output_attributes[i];
+
+        u32 semantics[4] = {
+            output_register_map.map_x.Value(), output_register_map.map_y.Value(),
+            output_register_map.map_z.Value(), output_register_map.map_w.Value()
+        };
+
+        // TODO: actually assign each component semantics, not just whole-vec4's
+        // Also might only need to do this once per shader?
+        if (output_register_map.map_x.Value() % 4 == 0) {
+            glUniform1i(uniform_out_maps + output_register_map.map_x.Value() / 4, i);
+        }
+
+        //for (int comp = 0; comp < 4; ++comp)
+        //    state.output_register_table[4 * i + comp] = ((float24*)&ret) + semantics[comp];
     }
 
     // Upload or use textures

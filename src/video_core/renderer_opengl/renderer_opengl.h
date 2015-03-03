@@ -16,8 +16,6 @@
 
 #define USE_OGL_RENDERER
 
-//#define IS_CAVE_STORY
-
 class EmuWindow;
 
 struct RawVertex {
@@ -105,4 +103,5 @@ private:
     GLuint uniform_b;
     GLuint uniform_i;
     GLuint uniform_tex;
+    GLuint uniform_out_maps;
 };

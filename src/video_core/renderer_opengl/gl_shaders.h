@@ -42,27 +42,16 @@ void main() {
 }
 )";
 
-const char g_fragment_shader_hw_oot[] = R"(
+const char g_fragment_shader_hw[] = R"(
 #version 150 core
 
 in vec4 o[7];
 
 uniform sampler2D tex[3];
+uniform int out_maps[7];
 
 void main(void) {
-    gl_FragColor = o[1] * texture(tex[0], o[2].xy);
-}
-)";
-
-const char g_fragment_shader_hw_cavestory[] = R"(
-#version 150 core
-
-in vec4 o[7];
-
-uniform sampler2D tex[3];
-
-void main(void) {
-    gl_FragColor = o[3] * texture(tex[0], o[4].xy);
+    gl_FragColor = o[out_maps[2]] * texture(tex[0], o[out_maps[3]].xy);
 }
 )";
 
