@@ -48,11 +48,12 @@ const char g_vertex_shader_hw[] = R"(
 in vec4 v[8];
 out vec4 o[7];
 
-uniform int out_maps[7];
+uniform int out_maps1[7];
+uniform int out_maps2[7];
 
 void main() {
-    o[out_maps[2]] = v[1];
-    o[out_maps[3]] = v[2];
+    o[out_maps1[2]] = v[1];
+    o[out_maps2[3]] = v[2];
     gl_Position = v[0];
 }
 )";
@@ -68,7 +69,8 @@ uniform float alphatest_ref;
 
 uniform sampler2D tex[3];
 uniform ivec4 tevs[6];
-uniform int out_maps[7];
+uniform int out_maps1[7];
+uniform int out_maps2[7];
 
 vec4 g_last_tex_env_out;
 
@@ -80,7 +82,7 @@ void ProcessTexEnv(int tex_env_idx) {
 
     // TODO: make this actually do tex env stuff
 
-    g_last_tex_env_out = o[out_maps[2]] * texture(tex[0], o[out_maps[3]].xy);
+    g_last_tex_env_out = o[out_maps1[2]] * texture(tex[0], o[out_maps2[3]].xy);
 }
 
 void main(void) {

@@ -224,7 +224,8 @@ void RendererOpenGL::InitOpenGLObjects() {
 
     uniform_tex = glGetUniformLocation(hw_program_id, "tex");
     uniform_tevs = glGetUniformLocation(hw_program_id, "tevs");
-    uniform_out_maps = glGetUniformLocation(hw_program_id, "out_maps");
+    uniform_out_maps1 = glGetUniformLocation(hw_program_id, "out_maps1");
+    uniform_out_maps2 = glGetUniformLocation(hw_program_id, "out_maps2");
 
     glUniform1i(uniform_tex, 0);
     glUniform1i(uniform_tex + 1, 1);
@@ -560,7 +561,8 @@ void RendererOpenGL::BeginBatch() {
 
         uniform_tex = glGetUniformLocation(g_cur_shader, "tex");
         uniform_tevs = glGetUniformLocation(g_cur_shader, "tevs");
-        uniform_out_maps = glGetUniformLocation(g_cur_shader, "out_maps");
+        uniform_out_maps1 = glGetUniformLocation(g_cur_shader, "out_maps1");
+        uniform_out_maps2 = glGetUniformLocation(g_cur_shader, "out_maps2");
 
         glUniform1i(uniform_tex, 0);
         glUniform1i(uniform_tex + 1, 1);
@@ -584,7 +586,8 @@ void RendererOpenGL::BeginBatch() {
         // TODO: actually assign each component semantics, not just whole-vec4's
         // Also might only need to do this once per shader?
         if (output_register_map.map_x.Value() % 4 == 0) {
-            glUniform1i(uniform_out_maps + output_register_map.map_x.Value() / 4, i);
+            glUniform1i(uniform_out_maps1 + output_register_map.map_x.Value() / 4, i);
+            glUniform1i(uniform_out_maps2 + output_register_map.map_x.Value() / 4, i);
         }
 
         //for (int comp = 0; comp < 4; ++comp)
