@@ -103,5 +103,6 @@ private:
     GLuint uniform_b;
     GLuint uniform_i;
     GLuint uniform_tex;
-    GLuint uniform_out_maps;
+    GLuint uniform_out_maps1;
+    GLuint uniform_out_maps2;
 };
