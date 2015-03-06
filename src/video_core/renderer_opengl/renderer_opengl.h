@@ -9,6 +9,7 @@
 #include "generated/gl_3_2_core.h"
 
 #include "common/math_util.h"
+#include "video_core/math.h"
 
 #include "core/hw/gpu.h"
 
@@ -67,6 +68,8 @@ private:
     };
 
     void InitOpenGLObjects();
+	Math::Vec2<u32> GetDesiredFramebufferSize(TextureInfo& texture,
+												const GPU::Regs::FramebufferConfig& framebuffer);
     static void ConfigureFramebufferTexture(TextureInfo& texture,
                                             const GPU::Regs::FramebufferConfig& framebuffer);
     void ConfigureHWFramebuffer(int fb_index);
