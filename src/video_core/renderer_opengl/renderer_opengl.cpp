@@ -17,8 +17,7 @@
 
 #include <algorithm>
 
-std::map<u8 *, GLuint> g_tex_cache;
-u8 *g_cur_tex_data[3];
+std::map<u32, GLuint> g_tex_cache;
 
 GLuint g_cur_shader = -1;
 u32 g_cur_shader_main = -1;
@@ -177,7 +176,6 @@ void RendererOpenGL::LoadFBToActiveGLTexture(const GPU::Regs::FramebufferConfig&
  */
 void RendererOpenGL::InitOpenGLObjects() {
     glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
-    glDisable(GL_DEPTH_TEST);
 
     // Link shaders and get variable locations
     program_id = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader, GLShaders::g_fragment_shader);
@@ -364,6 +362,7 @@ void RendererOpenGL::DrawScreens() {
     auto viewport_extent = GetViewportExtent();
     glViewport(viewport_extent.left, viewport_extent.top, viewport_extent.GetWidth(), viewport_extent.GetHeight()); // TODO: Or bottom?
     glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
 
     glUseProgram(program_id);
 
@@ -610,49 +609,46 @@ void RendererOpenGL::BeginBatch() {
     for (int i = 0; i < 3; ++i) {
         const auto& cur_texture = pica_textures[i];
         if (cur_texture.enabled) {
-            u8* texture_data = Memory::GetPointer(Pica::PAddrToVAddr(cur_texture.config.GetPhysicalAddress()));
-            if (g_cur_tex_data[i] != texture_data) {
-                g_cur_tex_data[i] = texture_data;
+            u32 tex_paddr = cur_texture.config.GetPhysicalAddress();
 
-                if (i == 0) {
-                    glActiveTexture(GL_TEXTURE0);
-                } else if (i == 1) {
-                    glActiveTexture(GL_TEXTURE1);
-                } else {
-                    glActiveTexture(GL_TEXTURE2);
-                }
+            if (i == 0) {
+                glActiveTexture(GL_TEXTURE0);
+            } else if (i == 1) {
+                glActiveTexture(GL_TEXTURE1);
+            } else {
+                glActiveTexture(GL_TEXTURE2);
+            }
 
-                std::map<u8*, GLuint>::iterator cached_tex = g_tex_cache.find(texture_data);
-                if (cached_tex != g_tex_cache.end()) {
-                    glBindTexture(GL_TEXTURE_2D, cached_tex->second);
-                } else {
-                    GLuint new_tex_handle;
-                    glGenTextures(1, &new_tex_handle);
-                    glBindTexture(GL_TEXTURE_2D, new_tex_handle);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, cur_texture.config.wrap_s == Pica::Regs::TextureConfig::WrapMode::ClampToEdge ? GL_CLAMP_TO_EDGE : (cur_texture.config.wrap_s == Pica::Regs::TextureConfig::WrapMode::Repeat ? GL_REPEAT : GL_MIRRORED_REPEAT));
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, cur_texture.config.wrap_t == Pica::Regs::TextureConfig::WrapMode::ClampToEdge ? GL_CLAMP_TO_EDGE : (cur_texture.config.wrap_t == Pica::Regs::TextureConfig::WrapMode::Repeat ? GL_REPEAT : GL_MIRRORED_REPEAT));
+            std::map<u32, GLuint>::iterator cached_tex = g_tex_cache.find(tex_paddr);
+            if (cached_tex != g_tex_cache.end()) {
+                glBindTexture(GL_TEXTURE_2D, cached_tex->second);
+            } else {
+                GLuint new_tex_handle;
+                glGenTextures(1, &new_tex_handle);
+                glBindTexture(GL_TEXTURE_2D, new_tex_handle);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, cur_texture.config.wrap_s == Pica::Regs::TextureConfig::WrapMode::ClampToEdge ? GL_CLAMP_TO_EDGE : (cur_texture.config.wrap_s == Pica::Regs::TextureConfig::WrapMode::Repeat ? GL_REPEAT : GL_MIRRORED_REPEAT));
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, cur_texture.config.wrap_t == Pica::Regs::TextureConfig::WrapMode::ClampToEdge ? GL_CLAMP_TO_EDGE : (cur_texture.config.wrap_t == Pica::Regs::TextureConfig::WrapMode::Repeat ? GL_REPEAT : GL_MIRRORED_REPEAT));
 
-                    Math::Vec4<u8>* rgba_tex = new Math::Vec4<u8>[cur_texture.config.width * cur_texture.config.height];
+                Math::Vec4<u8>* rgba_tex = new Math::Vec4<u8>[cur_texture.config.width * cur_texture.config.height];
 
-                    auto info = Pica::DebugUtils::TextureInfo::FromPicaRegister(cur_texture.config, cur_texture.format);
+                auto info = Pica::DebugUtils::TextureInfo::FromPicaRegister(cur_texture.config, cur_texture.format);
 
-                    for (int i = 0; i < info.width; i++)
+                for (int i = 0; i < info.width; i++)
+                {
+                    for (int j = 0; j < info.height; j++)
                     {
-                        for (int j = 0; j < info.height; j++)
-                        {
-                            rgba_tex[i + info.width * j] = Pica::DebugUtils::LookupTexture(texture_data, i, info.height - 1 - j, info);
-                        }
+                        rgba_tex[i + info.width * j] = Pica::DebugUtils::LookupTexture(Memory::GetPointer(Pica::PAddrToVAddr(tex_paddr)), i, info.height - 1 - j, info);
                     }
-
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, info.width, info.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_tex);
-
-                    delete rgba_tex;
-
-                    g_tex_cache.insert(std::pair<u8*, GLuint>(texture_data, new_tex_handle));
                 }
+
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, info.width, info.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_tex);
+
+                delete rgba_tex;
+
+                g_tex_cache.insert(std::pair<u32, GLuint>(tex_paddr, new_tex_handle));
             }
         }
     }
@@ -713,6 +709,19 @@ void RendererOpenGL::SetUniformFloats(u32 index, const float* values) {
     render_window->MakeCurrent();
     glUniform4fv(uniform_c + index, 1, values);
 #endif
+}
+
+void RendererOpenGL::NotifyDMACopy(u32 address, u32 size) {
+    // Flush any texture that falls in the overwritten region
+    // TODO: Should maintain size of tex and do actual check for region overlap, else assume that DMA always covers start address
+    for (auto iter = g_tex_cache.begin(); iter != g_tex_cache.end();) {
+        if ((u32)iter->first >= address && (u32)iter->first <= address + size) {
+            glDeleteTextures(1, &iter->second);
+            iter = g_tex_cache.erase(iter);
+        } else {
+            ++iter;
+        }
+    }
 }
 
 /// Updates the framerate

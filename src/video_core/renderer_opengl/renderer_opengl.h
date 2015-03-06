@@ -56,6 +56,8 @@ public:
     void SetUniformInts(u32 index, const u32* values);
     void SetUniformFloats(u32 index, const float* values);
 
+    void NotifyDMACopy(u32 address, u32 size);
+
 private:
     /// Structure used for storing information about the textures for each 3DS screen
     struct TextureInfo {

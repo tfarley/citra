@@ -368,8 +368,8 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                 }
                 
                 RawVertex new_vert;
-                new_vert.attribs[0][0] = -output.pos.y.ToFloat32();
-                new_vert.attribs[0][1] = output.pos.x.ToFloat32();
+                new_vert.attribs[0][0] = output.pos.x.ToFloat32();
+                new_vert.attribs[0][1] = -output.pos.y.ToFloat32();
                 new_vert.attribs[0][2] = -output.pos.z.ToFloat32();
                 new_vert.attribs[0][3] = output.pos.w.ToFloat32();
                 new_vert.attribs[1][0] = output.color.x.ToFloat32();
