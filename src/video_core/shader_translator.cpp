@@ -571,7 +571,7 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
         if (instr.opcode == nihstro::Instruction::OpCode::END) {
             if (nest_depth > 0) {
                 main_closed = true;
-                glsl_shader += std::string(nest_depth, '\t') + "gl_Position = vec4(-o[0].y, o[0].x, -o[0].z, o[0].w);\n}// END\n";
+                glsl_shader += std::string(nest_depth, '\t') + "gl_Position = vec4(o[0].x, -o[0].y, -o[0].z, o[0].w);\n}// END\n";
                 nest_depth--;
             } else {
                 glsl_shader += "\n";
