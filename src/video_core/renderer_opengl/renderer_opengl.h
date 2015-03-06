@@ -15,6 +15,8 @@
 #include "video_core/renderer_base.h"
 
 #define USE_OGL_RENDERER
+#define USE_OGL_VTXSHADER
+#define USE_OGL_HD
 
 class EmuWindow;
 
@@ -67,6 +69,7 @@ private:
     void InitOpenGLObjects();
     static void ConfigureFramebufferTexture(TextureInfo& texture,
                                             const GPU::Regs::FramebufferConfig& framebuffer);
+    void ConfigureHWFramebuffer(int fb_index);
     void DrawScreens();
     void DrawSingleScreenRotated(const TextureInfo& texture, float x, float y, float w, float h);
     void UpdateFramerate();
@@ -96,12 +99,21 @@ private:
     GLuint attrib_position;
     GLuint attrib_tex_coord;
     // Hardware renderer
+    GLuint hw_program_id;
     GLuint hw_vertex_array_handle;
     GLuint hw_vertex_buffer_handle;
+    GLuint hw_framebuffers[2];
+    GLuint hw_framedepthbuffers[2];
+    // Hardware vertex shader
     GLuint attrib_v;
     GLuint uniform_c;
     GLuint uniform_b;
     GLuint uniform_i;
+    // Hardware fragment shader
+    GLuint uniform_alphatest_func;
+    GLuint uniform_alphatest_ref;
     GLuint uniform_tex;
+    GLuint uniform_tevs;
     GLuint uniform_out_maps;
+    GLuint uniform_tex_envs;
 };

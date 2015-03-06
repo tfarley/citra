@@ -76,15 +76,15 @@ RendererOpenGL::~RendererOpenGL() {
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
 #ifdef USE_OGL_RENDERER
-    if (!g_did_render)
+    if (!g_did_render) {
         return;
+    }
 
     g_did_render = 0;
-#endif // #ifndef USE_OGL_RENDERER
+#endif
 
     render_window->MakeCurrent();
 
-#ifndef USE_OGL_RENDERER
     for(int i : {0, 1}) {
         const auto& framebuffer = GPU::g_regs.framebuffer_config[i];
     
@@ -94,25 +94,39 @@ void RendererOpenGL::SwapBuffers() {
             // Reallocate texture if the framebuffer size has changed.
             // This is expected to not happen very often and hence should not be a
             // performance problem.
+
             ConfigureFramebufferTexture(textures[i], framebuffer);
+            ConfigureHWFramebuffer(i);
         }
-    
+#ifndef USE_OGL_RENDERER
         LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
+#endif
     }
 
+    glBindVertexArray(vertex_array_handle);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     DrawScreens();
-#else // #ifndef USE_OGL_RENDERER
-    glFlush();
-    glFinish();
-#endif // #ifndef USE_OGL_RENDERER
+
+    glBindVertexArray(hw_vertex_array_handle);
+    glUseProgram(hw_program_id);
+
+#ifdef USE_OGL_RENDERER
+    // TODO: check if really needed
+    //glFlush();
+    //glFinish();
+#endif
 
     // Swap buffers
     render_window->PollEvents();
     render_window->SwapBuffers();
 
 #ifdef USE_OGL_RENDERER
+    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[0]);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-#endif // #ifndef USE_OGL_RENDERER
+    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#endif
 }
 
 /**
@@ -161,7 +175,6 @@ void RendererOpenGL::LoadFBToActiveGLTexture(const GPU::Regs::FramebufferConfig&
  * Initializes the OpenGL state and creates persistent objects.
  */
 void RendererOpenGL::InitOpenGLObjects() {
-#ifndef USE_OGL_RENDERER
     glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
     glDisable(GL_DEPTH_TEST);
 
@@ -202,8 +215,21 @@ void RendererOpenGL::InitOpenGLObjects() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     glBindTexture(GL_TEXTURE_2D, 0);
-#else // #ifndef USE_OGL_RENDERER
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+    // Hardware renderer setup
+    hw_program_id = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
+    attrib_v = glGetAttribLocation(hw_program_id, "v");
+
+    uniform_alphatest_func = glGetUniformLocation(hw_program_id, "alphatest_func");
+    uniform_alphatest_ref = glGetUniformLocation(hw_program_id, "alphatest_ref");
+
+    uniform_tex = glGetUniformLocation(hw_program_id, "tex");
+    uniform_tevs = glGetUniformLocation(hw_program_id, "tevs");
+    uniform_out_maps = glGetUniformLocation(hw_program_id, "out_maps");
+
+    glUniform1i(uniform_tex, 0);
+    glUniform1i(uniform_tex + 1, 1);
+    glUniform1i(uniform_tex + 2, 2);
 
     glGenBuffers(1, &hw_vertex_buffer_handle);
 
@@ -213,7 +239,16 @@ void RendererOpenGL::InitOpenGLObjects() {
 
     // Attach vertex data to VAO
     glBindBuffer(GL_ARRAY_BUFFER, hw_vertex_buffer_handle);
-#endif // #ifndef USE_OGL_RENDERER
+
+    glUseProgram(hw_program_id);
+
+    for (int i = 0; i < 8; i++) {
+        glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
+        glEnableVertexAttribArray(attrib_v + i);
+    }
+
+    glGenFramebuffers(2, hw_framebuffers);
+    glGenRenderbuffers(2, hw_framedepthbuffers);
 }
 
 void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
@@ -222,8 +257,19 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
     GLint internal_format;
 
     texture.format = format;
+#ifndef USE_OGL_HD
     texture.width = framebuffer.width;
     texture.height = framebuffer.height;
+#else
+    auto viewport_extent = ((RendererOpenGL *)VideoCore::g_renderer)->GetViewportExtent();
+    if (texture.handle == ((RendererOpenGL *)VideoCore::g_renderer)->textures[0].handle) {
+        texture.width = viewport_extent.GetWidth();
+        texture.height = viewport_extent.GetHeight() / 2;
+    } else {
+        texture.width = viewport_extent.GetWidth() * ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);
+        texture.height = viewport_extent.GetHeight() / 2 * ((float)VideoCore::kScreenBottomHeight / (float)VideoCore::kScreenTopHeight);
+    }
+#endif
 
     switch (format) {
     case GPU::Regs::PixelFormat::RGBA8:
@@ -269,17 +315,43 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
             texture.gl_format, texture.gl_type, nullptr);
 }
 
+void RendererOpenGL::ConfigureHWFramebuffer(int fb_index)
+{
+    // Set up depth buffer
+    glBindRenderbuffer(GL_RENDERBUFFER, hw_framedepthbuffers[fb_index]);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, textures[fb_index].width, textures[fb_index].height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    // Configure framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[fb_index]);
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textures[fb_index].handle, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, hw_framedepthbuffers[fb_index]);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    }
+}
+
 /**
  * Draws a single texture to the emulator window, rotating the texture to correct for the 3DS's LCD rotation.
  */
 void RendererOpenGL::DrawSingleScreenRotated(const TextureInfo& texture, float x, float y, float w, float h) {
+#ifndef USE_OGL_RENDERER
     std::array<ScreenRectVertex, 4> vertices = {
         ScreenRectVertex(x,   y,   1.f, 0.f),
         ScreenRectVertex(x+w, y,   1.f, 1.f),
         ScreenRectVertex(x,   y+h, 0.f, 0.f),
         ScreenRectVertex(x+w, y+h, 0.f, 1.f),
     };
-
+#else
+    // Don't rotate for hw renderer
+    std::array<ScreenRectVertex, 4> vertices = {
+        ScreenRectVertex(x, y, 0.f, 1.f),
+        ScreenRectVertex(x + w, y, 1.f, 1.f),
+        ScreenRectVertex(x, y + h, 0.f, 0.f),
+        ScreenRectVertex(x + w, y + h, 1.f, 0.f),
+    };
+#endif
     glBindTexture(GL_TEXTURE_2D, texture.handle);
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices.data());
@@ -440,14 +512,6 @@ void RendererOpenGL::BeginBatch() {
     //    glDepthMask(GL_FALSE);
     //}
 
-    // TODO: on ogl v3 needs to be taken care of in shader instead
-    // also registers.output_merger.alpha_test.func
-    //if (Pica::registers.output_merger.alpha_test.enable.Value()) {
-    //    glEnable(GL_ALPHA_TEST);
-    //} else {
-    //    glDisable(GL_ALPHA_TEST);
-    //}
-
     if (Pica::registers.output_merger.alphablend_enable.Value()) {
         glEnable(GL_BLEND);
     } else {
@@ -463,16 +527,16 @@ void RendererOpenGL::BeginBatch() {
 
     glBlendFuncSeparate(src_blend_rgb, dst_blend_rgb, src_blend_a, dst_blend_a);
 
-    auto pica_textures = Pica::registers.GetTextures();
-
     // Uncomment to get shader translator output
     //FILE* outfile = fopen("shaderdecomp.txt", "w");
     //fwrite(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).length(), 1, outfile);
     //fclose(outfile);
     //exit(0);
-
+    
+#ifdef USE_OGL_VTXSHADER
     // Switch shaders
-    if (g_cur_shader_main != Pica::registers.vs_main_offset) {
+    // TODO: Should never use g_vertex_shader_hw if using glsl shaders for rendering, but for now just switch every time
+    //if (g_cur_shader_main != Pica::registers.vs_main_offset) {
         g_cur_shader_main = Pica::registers.vs_main_offset;
 
         std::map<u32, GLuint>::iterator cachedShader = g_shader_cache.find(Pica::registers.vs_main_offset);
@@ -493,7 +557,11 @@ void RendererOpenGL::BeginBatch() {
         uniform_b = glGetUniformLocation(g_cur_shader, "b");
         uniform_i = glGetUniformLocation(g_cur_shader, "i");
 
+        uniform_alphatest_func = glGetUniformLocation(g_cur_shader, "alphatest_func");
+        uniform_alphatest_ref = glGetUniformLocation(g_cur_shader, "alphatest_ref");
+
         uniform_tex = glGetUniformLocation(g_cur_shader, "tex");
+        uniform_tevs = glGetUniformLocation(g_cur_shader, "tevs");
         uniform_out_maps = glGetUniformLocation(g_cur_shader, "out_maps");
 
         glUniform1i(uniform_tex, 0);
@@ -504,7 +572,8 @@ void RendererOpenGL::BeginBatch() {
             glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
             glEnableVertexAttribArray(attrib_v + i);
         }
-    }
+    //}
+#endif
 
     for (int i = 0; i < 7; ++i) {
         const auto& output_register_map = Pica::registers.vs_output_attributes[i];
@@ -524,9 +593,22 @@ void RendererOpenGL::BeginBatch() {
         //    state.output_register_table[4 * i + comp] = ((float24*)&ret) + semantics[comp];
     }
 
+    auto tev_stages = Pica::registers.GetTevStages();
+    for (int i = 0; i < 6; i++) {
+        glUniform4iv(uniform_tevs + i, 1, (GLint *)(&tev_stages[i]));
+    }
+
+    if (Pica::registers.output_merger.alpha_test.enable.Value()) {
+        glUniform1i(uniform_alphatest_func, Pica::registers.output_merger.alpha_test.func.Value());
+        glUniform1f(uniform_alphatest_ref, Pica::registers.output_merger.alpha_test.ref.Value() / 255.0f);
+    } else {
+        glUniform1i(uniform_alphatest_func, 1);
+    }
+
+    auto pica_textures = Pica::registers.GetTextures();
+
     // Upload or use textures
     for (int i = 0; i < 3; ++i) {
-        // TODO: make this not just grab the first texture
         const auto& cur_texture = pica_textures[i];
         if (cur_texture.enabled) {
             u8* texture_data = Memory::GetPointer(Pica::PAddrToVAddr(cur_texture.config.GetPhysicalAddress()));
@@ -595,15 +677,11 @@ void RendererOpenGL::EndBatch() {
 
     // TODO: reimplement when actual fb switch can be caught - currently every-frame hack for cave story resolution
     //if (g_last_fb != cur_fb) {
-        auto viewport_extent = GetViewportExtent();
-
-        if (Pica::registers.framebuffer.GetColorBufferPhysicalAddress() == g_first_fb) {
-            glViewport(viewport_extent.left, viewport_extent.top + viewport_extent.GetHeight() / 2, viewport_extent.GetWidth(), viewport_extent.GetHeight() / 2);
-        } else {
-            float bottom_width = viewport_extent.GetWidth() * ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);
-            float bottom_height = viewport_extent.GetHeight() / 2 * ((float)VideoCore::kScreenBottomHeight / (float)VideoCore::kScreenTopHeight);
-            glViewport(viewport_extent.left + (viewport_extent.GetWidth() - bottom_width) / 2, viewport_extent.top, bottom_width, bottom_height);
-        }
+        int fbidx = cur_fb != g_first_fb;
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[fbidx]);
+        
+        glViewport(0, 0, textures[fbidx].width, textures[fbidx].height);
 
         g_last_fb = cur_fb;
     //}
@@ -618,18 +696,24 @@ void RendererOpenGL::EndBatch() {
 }
 
 void RendererOpenGL::SetUniformBool(u32 index, int value) {
+#ifdef USE_OGL_VTXSHADER
     render_window->MakeCurrent();
     glUniform1i(uniform_b + index, value);
+#endif
 }
 
 void RendererOpenGL::SetUniformInts(u32 index, const u32* values) {
+#ifdef USE_OGL_VTXSHADER
     render_window->MakeCurrent();
     glUniform4iv(uniform_i + index, 1, (const GLint*)values);
+#endif
 }
 
 void RendererOpenGL::SetUniformFloats(u32 index, const float* values) {
+#ifdef USE_OGL_VTXSHADER
     render_window->MakeCurrent();
     glUniform4fv(uniform_c + index, 1, values);
+#endif
 }
 
 /// Updates the framerate
