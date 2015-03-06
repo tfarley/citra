@@ -119,6 +119,7 @@ private:
     GLuint uniform_alphatest_ref;
     GLuint uniform_tex;
     GLuint uniform_tevs;
-    GLuint uniform_out_maps;
+    GLuint uniform_out_maps1;
+    GLuint uniform_out_maps2;
     GLuint uniform_tex_envs;
 };
