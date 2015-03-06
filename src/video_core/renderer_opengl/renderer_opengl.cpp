@@ -256,7 +256,7 @@ Math::Vec2<u32> RendererOpenGL::GetDesiredFramebufferSize(TextureInfo& texture,
 	return Math::Vec2<u32>(framebuffer.width, framebuffer.height);
 #else
 	auto viewport_extent = GetViewportExtent();
-	Math::Vec2<u32> desired_size(viewport_extent.GetWidth(), viewport_extent.GetHeight() / 2);
+    Math::Vec2<u32> desired_size(viewport_extent.GetHeight() / 2, viewport_extent.GetWidth());
 
 	if (texture.handle != textures[0].handle) {
 		desired_size.x *= ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);

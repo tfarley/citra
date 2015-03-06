@@ -347,7 +347,10 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
                Memory::GetPointer(command.dma_request.source_address),
                command.dma_request.size);
         SignalInterrupt(InterruptId::DMA);
+
+        // TODO: Hook FlushDataCache() instead once mapping between address and texture data is discovered
         ((RendererOpenGL *)VideoCore::g_renderer)->NotifyDMACopy(Memory::VirtualToPhysicalAddress(command.dma_request.dest_address), command.dma_request.size);
+
         break;
 
     // ctrulib homebrew sends all relevant command list data with this command,
