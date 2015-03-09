@@ -143,7 +143,7 @@ void RendererOpenGL::SwapBuffers() {
 
     if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
         glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffer);
-        glViewport(0, 0, hw_fb_texture.width, hw_fb_texture.height);
+        glViewport(0, 0, hw_fb_color_texture.width, hw_fb_color_texture.height);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
 }
@@ -274,28 +274,34 @@ void RendererOpenGL::InitOpenGLObjects() {
     glEnableVertexAttribArray(hw_attrib_texcoords[1]);
     glEnableVertexAttribArray(hw_attrib_texcoords[2]);
 
-    glGenTextures(1, &hw_fb_texture.handle);
+    glGenTextures(1, &hw_fb_color_texture.handle);
 
-    glBindTexture(GL_TEXTURE_2D, hw_fb_texture.handle);
+    glBindTexture(GL_TEXTURE_2D, hw_fb_color_texture.handle);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glGenTextures(1, &hw_fb_depth_texture.handle);
+
+    glBindTexture(GL_TEXTURE_2D, hw_fb_depth_texture.handle);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
     glGenFramebuffers(1, &hw_framebuffer);
-    glGenRenderbuffers(1, &hw_framedepthbuffer);
-
-    glBindRenderbuffer(GL_RENDERBUFFER, hw_framedepthbuffer);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, 1, 1);
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
     // Configure framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffer);
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, hw_fb_texture.handle, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, hw_framedepthbuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hw_fb_color_texture.handle, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, hw_fb_depth_texture.handle, 0);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
@@ -479,15 +485,15 @@ void RendererOpenGL::CommitFramebuffer() {
     {
         u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(g_last_fb_color_format));
 
-        u8* ogl_img = new u8[hw_fb_texture.width * hw_fb_texture.height * bytes_per_pixel];
+        u8* ogl_img = new u8[hw_fb_color_texture.width * hw_fb_color_texture.height * bytes_per_pixel];
 
-        glBindTexture(GL_TEXTURE_2D, hw_fb_texture.handle);
-        glGetTexImage(GL_TEXTURE_2D, 0, hw_fb_texture.gl_format, hw_fb_texture.gl_type, ogl_img);
+        glBindTexture(GL_TEXTURE_2D, hw_fb_color_texture.handle);
+        glGetTexImage(GL_TEXTURE_2D, 0, hw_fb_color_texture.gl_format, hw_fb_color_texture.gl_type, ogl_img);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        for (int x = 0; x < hw_fb_texture.width; ++x)
+        for (int x = 0; x < hw_fb_color_texture.width; ++x)
         {
-            for (int y = 0; y < hw_fb_texture.height; ++y)
+            for (int y = 0; y < hw_fb_color_texture.height; ++y)
             {
                 u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(g_last_fb_color_addr));
 
@@ -495,8 +501,8 @@ void RendererOpenGL::CommitFramebuffer() {
                 // NOTE: The framebuffer height register contains the actual FB height minus one.
 
                 const u32 coarse_y = y & ~7;
-                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * hw_fb_texture.width * bytes_per_pixel;
-                u32 ogl_px_idx = x * bytes_per_pixel + y * hw_fb_texture.width * bytes_per_pixel;
+                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * hw_fb_color_texture.width * bytes_per_pixel;
+                u32 ogl_px_idx = x * bytes_per_pixel + y * hw_fb_color_texture.width * bytes_per_pixel;
 
                 switch (g_last_fb_color_format) {
                 case Pica::registers.framebuffer.RGBA8:
@@ -525,8 +531,11 @@ void RendererOpenGL::CommitFramebuffer() {
         }
 
         delete ogl_img;
+    }
 
-        // TODO: commit depth buffer to g_last_fb_depth_addr - still use morton?
+    if (g_last_fb_depth_addr != -1)
+    {
+        // TODO: Commit depth texture - still use morton?
     }
 }
 
@@ -540,9 +549,10 @@ void RendererOpenGL::BeginBatch() {
 
     bool fb_switched = (g_last_fb_color_addr != cur_fb_color_addr || g_last_fb_depth_addr != cur_fb_depth_addr ||
                         g_last_fb_color_format != cur_fb_color_format || g_last_fb_depth_format != cur_fb_depth_format);
-    bool fb_resized = (hw_fb_texture.width != Pica::registers.framebuffer.GetWidth() ||
-                        hw_fb_texture.height != Pica::registers.framebuffer.GetHeight());
-    bool fb_format_changed = (hw_fb_texture.format != (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value());
+    bool fb_resized = (hw_fb_color_texture.width != Pica::registers.framebuffer.GetWidth() ||
+                        hw_fb_color_texture.height != Pica::registers.framebuffer.GetHeight());
+    bool fb_format_changed = (hw_fb_color_texture.format != (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value() ||
+                                hw_fb_depth_texture.format != (GPU::Regs::PixelFormat)Pica::registers.framebuffer.depth_format);
 
     if (fb_switched) {
         CommitFramebuffer();
@@ -554,14 +564,18 @@ void RendererOpenGL::BeginBatch() {
     }
 
     if (fb_resized || fb_format_changed) {
-        ReconfigureTexture(hw_fb_texture, (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value(), Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
+        ReconfigureTexture(hw_fb_color_texture, (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value(), Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
+        
+        hw_fb_depth_texture.format = (GPU::Regs::PixelFormat)Pica::registers.framebuffer.depth_format;
+        hw_fb_depth_texture.width = Pica::registers.framebuffer.GetWidth();
+        hw_fb_depth_texture.height = Pica::registers.framebuffer.GetHeight();
+        hw_fb_depth_texture.gl_format = GL_DEPTH_COMPONENT;
+        hw_fb_depth_texture.gl_type = GL_FLOAT;
+        glBindTexture(GL_TEXTURE_2D, hw_fb_depth_texture.handle);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, hw_fb_depth_texture.width, hw_fb_depth_texture.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
     }
 
     if (fb_resized) {
-        glBindRenderbuffer(GL_RENDERBUFFER, hw_framedepthbuffer);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
-        glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
         glViewport(0, 0, Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
     }
 

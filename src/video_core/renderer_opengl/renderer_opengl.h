@@ -98,12 +98,12 @@ private:
     GLuint attrib_position;
     GLuint attrib_tex_coord;
     // Hardware renderer
-    TextureInfo hw_fb_texture;
+    TextureInfo hw_fb_color_texture;
+    TextureInfo hw_fb_depth_texture;
     GLuint hw_program_id;
     GLuint hw_vertex_array_handle;
     GLuint hw_vertex_buffer_handle;
     GLuint hw_framebuffer;
-    GLuint hw_framedepthbuffer;
     // Hardware vertex shader
     GLuint hw_attrib_position;
     GLuint hw_attrib_color;
