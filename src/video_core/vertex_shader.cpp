@@ -263,9 +263,11 @@ static void ProcessShaderCode(VertexShaderState& state) {
                     if (!swizzle.DestComponentEnabled(i))
                         continue;
 
-                    // TODO: Be stable against division by zero!
                     // TODO: I think this might be wrong... we should only use one component here
-                    dest[i] = float24::FromFloat32(1.0f / src1[i].ToFloat32());
+                    if (src1[i].ToFloat32() > 0.000001f)
+                        dest[i] = float24::FromFloat32(1.0f / src1[i].ToFloat32());
+                    else
+                        dest[i] = float24::FromFloat32(0.0f);
                 }
 
                 break;
@@ -278,9 +280,11 @@ static void ProcessShaderCode(VertexShaderState& state) {
                     if (!swizzle.DestComponentEnabled(i))
                         continue;
 
-                    // TODO: Be stable against division by zero!
                     // TODO: I think this might be wrong... we should only use one component here
-                    dest[i] = float24::FromFloat32(1.0f / sqrt(src1[i].ToFloat32()));
+                    if (sqrt(src1[i].ToFloat32()) > 0.000001f)
+                        dest[i] = float24::FromFloat32(1.0f / sqrt(src1[i].ToFloat32()));
+                    else
+                        dest[i] = float24::FromFloat32(0.0f);
                 }
 
                 break;

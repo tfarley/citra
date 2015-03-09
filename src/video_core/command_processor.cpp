@@ -121,74 +121,78 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
             PrimitiveAssembler<VertexShader::OutputVertex> clipper_primitive_assembler(registers.triangle_topology.Value());
             PrimitiveAssembler<DebugUtils::GeometryDumper::Vertex> dumping_primitive_assembler(registers.triangle_topology.Value());
 
+            std::map<unsigned int, VertexShader::OutputVertex> vert_cache;
+
             for (unsigned int index = 0; index < registers.num_vertices; ++index)
             {
                 unsigned int vertex = is_indexed ? (index_u16 ? index_address_16[index] : index_address_8[index]) : index;
 
-                if (is_indexed) {
-                    // TODO: Implement some sort of vertex cache!
-                }
+                VertexShader::OutputVertex output;
 
-                // Initialize data for the current vertex
-                VertexShader::InputVertex input;
+                if (is_indexed && vert_cache.find(vertex) != vert_cache.end()) {
+                    output = vert_cache.find(vertex)->second;
+                } else {
+                    // Initialize data for the current vertex
+                    VertexShader::InputVertex input;
 
-                // Load a debugging token to check whether this gets loaded by the running
-                // application or not.
-                static const float24 debug_token = float24::FromRawFloat24(0x00abcdef);
-                input.attr[0].w = debug_token;
+                    // Load a debugging token to check whether this gets loaded by the running
+                    // application or not.
+                    static const float24 debug_token = float24::FromRawFloat24(0x00abcdef);
+                    input.attr[0].w = debug_token;
 
-                for (int i = 0; i < attribute_config.GetNumTotalAttributes(); ++i) {
-                    for (unsigned int comp = 0; comp < vertex_attribute_elements[i]; ++comp) {
-                        const u8* srcdata = Memory::GetPointer(PAddrToVAddr(vertex_attribute_sources[i] + vertex_attribute_strides[i] * vertex + comp * vertex_attribute_element_size[i]));
+                    for (int i = 0; i < attribute_config.GetNumTotalAttributes(); ++i) {
+                        for (unsigned int comp = 0; comp < vertex_attribute_elements[i]; ++comp) {
+                            const u8* srcdata = Memory::GetPointer(PAddrToVAddr(vertex_attribute_sources[i] + vertex_attribute_strides[i] * vertex + comp * vertex_attribute_element_size[i]));
 
-                        // TODO(neobrain): Ocarina of Time 3D has GetNumTotalAttributes return 8,
-                        // yet only provides 2 valid source data addresses. Need to figure out
-                        // what's wrong there, until then we just continue when address lookup fails
-                        if (srcdata == nullptr)
-                            continue;
+                            // TODO(neobrain): Ocarina of Time 3D has GetNumTotalAttributes return 8,
+                            // yet only provides 2 valid source data addresses. Need to figure out
+                            // what's wrong there, until then we just continue when address lookup fails
+                            if (srcdata == nullptr)
+                                continue;
 
-                        const float srcval = (vertex_attribute_formats[i] == 0) ? *(s8*)srcdata :
-                                             (vertex_attribute_formats[i] == 1) ? *(u8*)srcdata :
-                                             (vertex_attribute_formats[i] == 2) ? *(s16*)srcdata :
-                                                                                  *(float*)srcdata;
-                        input.attr[i][comp] = float24::FromFloat32(srcval);
-                        LOG_TRACE(HW_GPU, "Loaded component %x of attribute %x for vertex %x (index %x) from 0x%08x + 0x%08lx + 0x%04lx: %f",
-                                  comp, i, vertex, index,
-                                  attribute_config.GetPhysicalBaseAddress(),
-                                  vertex_attribute_sources[i] - base_address,
-                                  vertex_attribute_strides[i] * vertex + comp * vertex_attribute_element_size[i],
-                                  input.attr[i][comp].ToFloat32());
+                            const float srcval = (vertex_attribute_formats[i] == 0) ? *(s8*)srcdata :
+                                (vertex_attribute_formats[i] == 1) ? *(u8*)srcdata :
+                                (vertex_attribute_formats[i] == 2) ? *(s16*)srcdata :
+                                *(float*)srcdata;
+                            input.attr[i][comp] = float24::FromFloat32(srcval);
+                            LOG_TRACE(HW_GPU, "Loaded component %x of attribute %x for vertex %x (index %x) from 0x%08x + 0x%08lx + 0x%04lx: %f",
+                                comp, i, vertex, index,
+                                attribute_config.GetPhysicalBaseAddress(),
+                                vertex_attribute_sources[i] - base_address,
+                                vertex_attribute_strides[i] * vertex + comp * vertex_attribute_element_size[i],
+                                input.attr[i][comp].ToFloat32());
+                        }
                     }
-                }
 
-                // HACK: Some games do not initialize the vertex position's w component. This leads
-                //       to critical issues since it messes up perspective division. As a
-                //       workaround, we force the fourth component to 1.0 if we find this to be the
-                //       case.
-                //       To do this, we additionally have to assume that the first input attribute
-                //       is the vertex position, since there's no information about this other than
-                //       the empiric observation that this is usually the case.
-                if (input.attr[0].w == debug_token)
-                    input.attr[0].w = float24::FromFloat32(1.0);
+                    // HACK: Some games do not initialize the vertex position's w component. This leads
+                    //       to critical issues since it messes up perspective division. As a
+                    //       workaround, we force the fourth component to 1.0 if we find this to be the
+                    //       case.
+                    //       To do this, we additionally have to assume that the first input attribute
+                    //       is the vertex position, since there's no information about this other than
+                    //       the empiric observation that this is usually the case.
+                    if (input.attr[0].w == debug_token)
+                        input.attr[0].w = float24::FromFloat32(1.0);
 
-                if (g_debug_context)
-                    g_debug_context->OnEvent(DebugContext::Event::VertexLoaded, (void*)&input);
+                    if (g_debug_context)
+                        g_debug_context->OnEvent(DebugContext::Event::VertexLoaded, (void*)&input);
 
-                // NOTE: When dumping geometry, we simply assume that the first input attribute
-                //       corresponds to the position for now.
-                DebugUtils::GeometryDumper::Vertex dumped_vertex = {
-                    input.attr[0][0].ToFloat32(), input.attr[0][1].ToFloat32(), input.attr[0][2].ToFloat32()
-                };
-                using namespace std::placeholders;
-                dumping_primitive_assembler.SubmitVertex(dumped_vertex,
-                                                         std::bind(&DebugUtils::GeometryDumper::AddTriangle,
-                                                                   &geometry_dumper, _1, _2, _3));
+                    // NOTE: When dumping geometry, we simply assume that the first input attribute
+                    //       corresponds to the position for now.
+                    DebugUtils::GeometryDumper::Vertex dumped_vertex = {
+                        input.attr[0][0].ToFloat32(), input.attr[0][1].ToFloat32(), input.attr[0][2].ToFloat32()
+                    };
+                    using namespace std::placeholders;
+                    dumping_primitive_assembler.SubmitVertex(dumped_vertex,
+                        std::bind(&DebugUtils::GeometryDumper::AddTriangle,
+                        &geometry_dumper, _1, _2, _3));
 
-                // Send to vertex shader
-                VertexShader::OutputVertex output = VertexShader::RunShader(input, attribute_config.GetNumTotalAttributes());
+                    // Send to vertex shader
+                    output = VertexShader::RunShader(input, attribute_config.GetNumTotalAttributes());
 
-                if (is_indexed) {
-                    // TODO: Add processed vertex to vertex cache!
+                    if (is_indexed) {
+                        vert_cache.emplace(vertex, output);
+                    }
                 }
 
                 // Send to triangle clipper
