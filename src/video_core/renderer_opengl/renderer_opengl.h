@@ -45,13 +45,15 @@ public:
     /// Shutdown the renderer
     void ShutDown() override;
 
-    void CommitFramebuffer();
-
     void BeginBatch();
     void DrawTriangle(const Pica::VertexShader::OutputVertex& v0, const Pica::VertexShader::OutputVertex& v1, const Pica::VertexShader::OutputVertex& v2);
     void EndBatch();
 
-    void NotifyDMACopy(u32 dest, u32 size);
+    void CommitFramebuffer();
+    void ReloadColorBuffer();
+    void ReloadDepthBuffer();
+
+    void NotifyFlush(u32 paddr, u32 size);
     void NotifyPreDisplayTransfer(u32 src, u32 dest);
 
 private:

@@ -144,7 +144,6 @@ void RendererOpenGL::SwapBuffers() {
     if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
         glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffer);
         glViewport(0, 0, hw_fb_color_texture.width, hw_fb_color_texture.height);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
 }
 
@@ -480,65 +479,6 @@ GLenum PICABlendFactorToOpenGL(u32 factor)
     }
 }
 
-void RendererOpenGL::CommitFramebuffer() {
-    if (g_last_fb_color_addr != -1)
-    {
-        u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(g_last_fb_color_format));
-
-        u8* ogl_img = new u8[hw_fb_color_texture.width * hw_fb_color_texture.height * bytes_per_pixel];
-
-        glBindTexture(GL_TEXTURE_2D, hw_fb_color_texture.handle);
-        glGetTexImage(GL_TEXTURE_2D, 0, hw_fb_color_texture.gl_format, hw_fb_color_texture.gl_type, ogl_img);
-        glBindTexture(GL_TEXTURE_2D, 0);
-
-        for (int x = 0; x < hw_fb_color_texture.width; ++x)
-        {
-            for (int y = 0; y < hw_fb_color_texture.height; ++y)
-            {
-                u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(g_last_fb_color_addr));
-
-                // Similarly to textures, the render framebuffer is laid out from bottom to top, too.
-                // NOTE: The framebuffer height register contains the actual FB height minus one.
-
-                const u32 coarse_y = y & ~7;
-                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * hw_fb_color_texture.width * bytes_per_pixel;
-                u32 ogl_px_idx = x * bytes_per_pixel + y * hw_fb_color_texture.width * bytes_per_pixel;
-
-                switch (g_last_fb_color_format) {
-                case Pica::registers.framebuffer.RGBA8:
-                {
-                    u8* pixel = color_buffer + dst_offset;
-                    pixel[3] = ogl_img[ogl_px_idx + 3];
-                    pixel[2] = ogl_img[ogl_px_idx + 2];
-                    pixel[1] = ogl_img[ogl_px_idx + 1];
-                    pixel[0] = ogl_img[ogl_px_idx];
-                    break;
-                }
-
-                case Pica::registers.framebuffer.RGBA4:
-                {
-                    u8* pixel = color_buffer + dst_offset;
-                    pixel[1] = (ogl_img[ogl_px_idx] & 0xF0) | (ogl_img[ogl_px_idx] >> 4);
-                    pixel[0] = (ogl_img[ogl_px_idx + 1] & 0xF0) | (ogl_img[ogl_px_idx + 1] >> 4);
-                    break;
-                }
-
-                default:
-                    LOG_CRITICAL(Render_Software, "Unknown framebuffer color format %x", g_last_fb_color_format);
-                    UNIMPLEMENTED();
-                }
-            }
-        }
-
-        delete ogl_img;
-    }
-
-    if (g_last_fb_depth_addr != -1)
-    {
-        // TODO: Commit depth texture - still use morton?
-    }
-}
-
 void RendererOpenGL::BeginBatch() {
     render_window->MakeCurrent();
 
@@ -580,11 +520,11 @@ void RendererOpenGL::BeginBatch() {
     }
 
     if (fb_switched) {
-        // TODO: should actually read in color+depth buffers from fb in memory instead of clearing
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        ReloadColorBuffer();
+        ReloadDepthBuffer();
     }
 
-    // TODO: Breaks oot since winding not consistent
+    // TODO: Works great, but requires the TriangleTopology::Fan ordering fix in prim assembler first (fixes cave story bubble self-clipping)
     //switch (Pica::registers.cull_mode.Value()) {
     //case Pica::Regs::CullMode::KeepAll:
     //    glDisable(GL_CULL_FACE);
@@ -649,7 +589,7 @@ void RendererOpenGL::BeginBatch() {
         break;
     }
 
-    // TODO: messes everything up
+    // TODO: Messes everything up. Lack of this is probably cause of cave story gun particle clipping with water and NPC fairy wings in oot
     //if (Pica::registers.output_merger.depth_write_enable.Value()) {
     //    glDepthMask(GL_TRUE);
     //} else {
@@ -685,7 +625,7 @@ void RendererOpenGL::BeginBatch() {
 
     auto pica_textures = Pica::registers.GetTextures();
 
-    // Upload or use textures
+    // Upload and bind textures
     for (int i = 0; i < 3; ++i) {
         const auto& cur_texture = pica_textures[i];
         if (cur_texture.enabled) {
@@ -750,15 +690,183 @@ void RendererOpenGL::EndBatch() {
     g_vertex_batch.clear();
 }
 
-void RendererOpenGL::NotifyDMACopy(u32 dest, u32 size) {
-    // Flush any texture that falls in the overwritten region
-    // TODO: Should maintain size of tex and do actual check for region overlap, else assume that DMA always covers start address
-    for (auto iter = g_tex_cache.begin(); iter != g_tex_cache.end();) {
-        if ((u32)iter->first >= dest && (u32)iter->first <= dest + size) {
-            glDeleteTextures(1, &iter->second);
-            iter = g_tex_cache.erase(iter);
-        } else {
-            ++iter;
+void RendererOpenGL::CommitFramebuffer() {
+    if (g_last_fb_color_addr != -1)
+    {
+        u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(g_last_fb_color_format));
+
+        u8* ogl_img = new u8[hw_fb_color_texture.width * hw_fb_color_texture.height * bytes_per_pixel];
+
+        glBindTexture(GL_TEXTURE_2D, hw_fb_color_texture.handle);
+        glGetTexImage(GL_TEXTURE_2D, 0, hw_fb_color_texture.gl_format, hw_fb_color_texture.gl_type, ogl_img);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(g_last_fb_color_addr));
+
+        for (int x = 0; x < hw_fb_color_texture.width; ++x)
+        {
+            for (int y = 0; y < hw_fb_color_texture.height; ++y)
+            {
+                const u32 coarse_y = y & ~7;
+                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * hw_fb_color_texture.width * bytes_per_pixel;
+                u32 ogl_px_idx = x * bytes_per_pixel + y * hw_fb_color_texture.width * bytes_per_pixel;
+
+                switch (g_last_fb_color_format) {
+                case Pica::registers.framebuffer.RGBA8:
+                {
+                    u8* pixel = color_buffer + dst_offset;
+                    pixel[3] = ogl_img[ogl_px_idx + 3];
+                    pixel[2] = ogl_img[ogl_px_idx + 2];
+                    pixel[1] = ogl_img[ogl_px_idx + 1];
+                    pixel[0] = ogl_img[ogl_px_idx];
+                    break;
+                }
+
+                case Pica::registers.framebuffer.RGBA4:
+                {
+                    u8* pixel = color_buffer + dst_offset;
+                    pixel[1] = (ogl_img[ogl_px_idx] & 0xF0) | (ogl_img[ogl_px_idx] >> 4);
+                    pixel[0] = (ogl_img[ogl_px_idx + 1] & 0xF0) | (ogl_img[ogl_px_idx + 1] >> 4);
+                    break;
+                }
+
+                default:
+                    LOG_CRITICAL(Render_Software, "Unknown framebuffer color format %x", g_last_fb_color_format);
+                    UNIMPLEMENTED();
+                }
+            }
+        }
+
+        delete ogl_img;
+    }
+
+    if (g_last_fb_depth_addr != -1)
+    {
+        // TODO: Untested
+        u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(g_last_fb_depth_format));
+
+        float* ogl_img = new float[hw_fb_depth_texture.width * hw_fb_depth_texture.height];
+
+        glBindTexture(GL_TEXTURE_2D, hw_fb_depth_texture.handle);
+        glGetTexImage(GL_TEXTURE_2D, 0, hw_fb_depth_texture.gl_format, hw_fb_depth_texture.gl_type, ogl_img);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(g_last_fb_depth_addr));
+
+        for (int x = 0; x < hw_fb_depth_texture.width; ++x)
+        {
+            for (int y = 0; y < hw_fb_depth_texture.height; ++y)
+            {
+                const u32 coarse_y = y & ~7;
+                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * hw_fb_depth_texture.width * bytes_per_pixel;
+                u32 ogl_px_idx = x + y * hw_fb_depth_texture.width;
+
+                u16_le* pixel = (u16_le*)(depth_buffer + dst_offset);
+                *pixel = ogl_img[ogl_px_idx];
+            }
+        }
+
+        delete ogl_img;
+    }
+}
+
+void RendererOpenGL::ReloadColorBuffer() {
+    render_window->MakeCurrent();
+
+    u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(g_last_fb_color_format));
+
+    u8* ogl_img = new u8[hw_fb_color_texture.width * hw_fb_color_texture.height * bytes_per_pixel];
+
+    u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(g_last_fb_color_addr));
+
+    for (int x = 0; x < hw_fb_color_texture.width; ++x)
+    {
+        for (int y = 0; y < hw_fb_color_texture.height; ++y)
+        {
+            const u32 coarse_y = y & ~7;
+            u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * hw_fb_color_texture.width * bytes_per_pixel;
+            u32 ogl_px_idx = x * bytes_per_pixel + y * hw_fb_color_texture.width * bytes_per_pixel;
+
+            switch (g_last_fb_color_format) {
+            case Pica::registers.framebuffer.RGBA8:
+            {
+                u8* pixel = color_buffer + dst_offset;
+                ogl_img[ogl_px_idx + 3] = pixel[3];
+                ogl_img[ogl_px_idx + 2] = pixel[2];
+                ogl_img[ogl_px_idx + 1] = pixel[1];
+                ogl_img[ogl_px_idx] = pixel[0];
+                break;
+            }
+
+            case Pica::registers.framebuffer.RGBA4:
+            {
+                u8* pixel = color_buffer + dst_offset;
+                ogl_img[ogl_px_idx] = (pixel[1] & 0xF0) | (pixel[1] >> 4);
+                ogl_img[ogl_px_idx + 1] = (pixel[0] & 0xF0) | (pixel[0] >> 4);
+                break;
+            }
+
+            default:
+                LOG_CRITICAL(Render_Software, "Unknown memory framebuffer color format %x", g_last_fb_color_format);
+                UNIMPLEMENTED();
+            }
+        }
+    }
+
+    glBindTexture(GL_TEXTURE_2D, hw_fb_color_texture.handle);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, hw_fb_color_texture.width, hw_fb_color_texture.height, hw_fb_color_texture.gl_format, hw_fb_color_texture.gl_type, ogl_img);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    delete ogl_img;
+}
+
+void RendererOpenGL::ReloadDepthBuffer() {
+    render_window->MakeCurrent();
+
+    u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(g_last_fb_depth_format));
+
+    float* ogl_img = new float[hw_fb_depth_texture.width * hw_fb_depth_texture.height];
+
+    u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(g_last_fb_depth_addr));
+
+    for (int x = 0; x < hw_fb_depth_texture.width; ++x)
+    {
+        for (int y = 0; y < hw_fb_depth_texture.height; ++y)
+        {
+            const u32 coarse_y = y & ~7;
+            u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * hw_fb_depth_texture.width * bytes_per_pixel;
+            u32 ogl_px_idx = x + y * hw_fb_depth_texture.width;
+
+            // TODO: Make sure this straight copy is correct
+            u16_le* pixel = (u16_le*)(depth_buffer + dst_offset);
+            ogl_img[ogl_px_idx] = *pixel;
+        }
+    }
+
+    glBindTexture(GL_TEXTURE_2D, hw_fb_depth_texture.handle);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, hw_fb_depth_texture.width, hw_fb_depth_texture.height, hw_fb_depth_texture.gl_format, hw_fb_depth_texture.gl_type, ogl_img);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    delete ogl_img;
+}
+
+void RendererOpenGL::NotifyFlush(u32 paddr, u32 size) {
+    if (Pica::registers.framebuffer.GetColorBufferPhysicalAddress() >= paddr && Pica::registers.framebuffer.GetColorBufferPhysicalAddress() < paddr + size) {
+        ReloadColorBuffer();
+    } else if(Pica::registers.framebuffer.GetDepthBufferPhysicalAddress() >= paddr && Pica::registers.framebuffer.GetDepthBufferPhysicalAddress() < paddr + size) {
+        ReloadDepthBuffer();
+    } else {
+        render_window->MakeCurrent();
+
+        // Flush any texture that falls in the flushed region
+        // TODO: Should maintain size of tex and do actual check for region overlap, else assume that DMA always covers start address
+        for (auto iter = g_tex_cache.begin(); iter != g_tex_cache.end();) {
+            if (iter->first >= paddr && iter->first <= paddr + size) {
+                glDeleteTextures(1, &iter->second);
+                iter = g_tex_cache.erase(iter);
+            } else {
+                ++iter;
+            }
         }
     }
 }
@@ -790,8 +898,6 @@ void RendererOpenGL::NotifyPreDisplayTransfer(u32 src, u32 dest)
     // can also support HD this way, by keeping fb's in higher res
 
     CommitFramebuffer();
-
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 /// Updates the framerate
