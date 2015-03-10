@@ -17,6 +17,8 @@
 #include "video_core/shader_translator.h"
 #include "video_core/vertex_shader.h"
 #include "video_core/debug_utils/debug_utils.h"
+#include "video_core/utils.h"
+#include "video_core/color.h"
 
 #include <algorithm>
 
@@ -28,10 +30,10 @@ std::map<u32, GLuint> g_shader_cache;
 
 std::vector<RawVertex> g_vertex_batch;
 
-bool g_did_render;
-
-u32 g_first_fb = -1;
-u32 g_last_fb = -1;
+u32 g_last_fb_color_addr = -1;
+u32 g_last_fb_color_format;
+u32 g_last_fb_depth_addr = -1;
+u32 g_last_fb_depth_format;
 
 /**
  * Vertex structure that the drawn screen rectangles are composed of.
@@ -77,33 +79,22 @@ RendererOpenGL::~RendererOpenGL() {
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
-#ifdef USE_OGL_RENDERER
-    if (!g_did_render) {
-        return;
-    }
-
-    g_did_render = 0;
-#endif
-
     render_window->MakeCurrent();
 
     for(int i : {0, 1}) {
         const auto& framebuffer = GPU::g_regs.framebuffer_config[i];
-		auto desired_size = GetDesiredFramebufferSize(textures[i], framebuffer);
 
-		if (textures[i].width != (GLsizei)desired_size.x ||
-			textures[i].height != (GLsizei)desired_size.y ||
+        if (textures[i].width != framebuffer.width ||
+            textures[i].height != framebuffer.height ||
             textures[i].format != framebuffer.color_format) {
             // Reallocate texture if the framebuffer size has changed.
             // This is expected to not happen very often and hence should not be a
             // performance problem.
 
             ConfigureFramebufferTexture(textures[i], framebuffer);
-            ConfigureHWFramebuffer(i);
         }
-#ifndef USE_OGL_RENDERER
+
         LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
-#endif
     }
 
     glBindVertexArray(vertex_array_handle);
@@ -134,9 +125,8 @@ void RendererOpenGL::SwapBuffers() {
     profiler.BeginFrame();
 
 #ifdef USE_OGL_RENDERER
-    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[0]);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
+    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffer);
+    glViewport(0, 0, hw_fb_texture.width, hw_fb_texture.height);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 #endif
 }
@@ -258,36 +248,40 @@ void RendererOpenGL::InitOpenGLObjects() {
         glEnableVertexAttribArray(attrib_v + i);
     }
 
-    glGenFramebuffers(2, hw_framebuffers);
-    glGenRenderbuffers(2, hw_framedepthbuffers);
+    glGenTextures(1, &hw_fb_texture.handle);
+
+    glBindTexture(GL_TEXTURE_2D, hw_fb_texture.handle);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glGenFramebuffers(1, &hw_framebuffer);
+    glGenRenderbuffers(1, &hw_framedepthbuffer);
+
+    glBindRenderbuffer(GL_RENDERBUFFER, hw_framedepthbuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, 1, 1);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+    // Configure framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffer);
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, hw_fb_texture.handle, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, hw_framedepthbuffer);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    }
 }
 
-Math::Vec2<u32> RendererOpenGL::GetDesiredFramebufferSize(TextureInfo& texture,
-															const GPU::Regs::FramebufferConfig& framebuffer) {
-#ifndef USE_OGL_HD
-	return Math::Vec2<u32>(framebuffer.width, framebuffer.height);
-#else
-    auto layout = render_window->GetFramebufferLayout();
-    Math::Vec2<u32> desired_size(layout.height / 2, layout.width);
-
-	if (texture.handle != textures[0].handle) {
-        desired_size.x *= ((float)VideoCore::kScreenBottomHeight / (float)VideoCore::kScreenTopHeight);
-		desired_size.y *= ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);
-	}
-
-	return desired_size;
-#endif
-}
-
-void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
-                                                 const GPU::Regs::FramebufferConfig& framebuffer) {
-    GPU::Regs::PixelFormat format = framebuffer.color_format;
+void RendererOpenGL::ReconfigureTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height) {
     GLint internal_format;
 
     texture.format = format;
-	auto desired_size = ((RendererOpenGL *)VideoCore::g_renderer)->GetDesiredFramebufferSize(texture, framebuffer);
-	texture.width = desired_size.x;
-	texture.height = desired_size.y;
+    texture.width = width;
+    texture.height = height;
 
     switch (format) {
     case GPU::Regs::PixelFormat::RGBA8:
@@ -330,24 +324,12 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
 
     glBindTexture(GL_TEXTURE_2D, texture.handle);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
-            texture.gl_format, texture.gl_type, nullptr);
+        texture.gl_format, texture.gl_type, nullptr);
 }
 
-void RendererOpenGL::ConfigureHWFramebuffer(int fb_index)
-{
-    // Set up depth buffer
-    glBindRenderbuffer(GL_RENDERBUFFER, hw_framedepthbuffers[fb_index]);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, textures[fb_index].width, textures[fb_index].height);
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-    // Configure framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[fb_index]);
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, textures[fb_index].handle, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, hw_framedepthbuffers[fb_index]);
-
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
-    }
+void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
+                                                 const GPU::Regs::FramebufferConfig& framebuffer) {
+    ReconfigureTexture(texture, framebuffer.color_format, framebuffer.width, framebuffer.height);
 }
 
 /**
@@ -466,8 +448,122 @@ GLenum PICABlendFactorToOpenGL(u32 factor)
     }
 }
 
+void RendererOpenGL::CommitFramebuffer() {
+    if (g_last_fb_color_addr != -1)
+    {
+        u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(g_last_fb_color_format));
+
+        u8* ogl_img = new u8[hw_fb_texture.width * hw_fb_texture.height * bytes_per_pixel];
+
+        glBindTexture(GL_TEXTURE_2D, hw_fb_texture.handle);
+        glGetTexImage(GL_TEXTURE_2D, 0, hw_fb_texture.gl_format, hw_fb_texture.gl_type, ogl_img);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        for (int x = 0; x < hw_fb_texture.width; ++x)
+        {
+            for (int y = 0; y < hw_fb_texture.height; ++y)
+            {
+                u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(g_last_fb_color_addr));
+
+                // Similarly to textures, the render framebuffer is laid out from bottom to top, too.
+                // NOTE: The framebuffer height register contains the actual FB height minus one.
+
+                const u32 coarse_y = y & ~7;
+                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * hw_fb_texture.width * bytes_per_pixel;
+                u32 ogl_px_idx = x * bytes_per_pixel + y * hw_fb_texture.width * bytes_per_pixel;
+
+                switch (g_last_fb_color_format) {
+                case Pica::registers.framebuffer.RGBA8:
+                {
+                    u8* pixel = color_buffer + dst_offset;
+                    pixel[3] = ogl_img[ogl_px_idx + 3];
+                    pixel[2] = ogl_img[ogl_px_idx + 2];
+                    pixel[1] = ogl_img[ogl_px_idx + 1];
+                    pixel[0] = ogl_img[ogl_px_idx];
+                    break;
+                }
+
+                case Pica::registers.framebuffer.RGBA4:
+                {
+                    u8* pixel = color_buffer + dst_offset;
+                    pixel[1] = (ogl_img[ogl_px_idx] & 0xF0) | (ogl_img[ogl_px_idx] >> 4);
+                    pixel[0] = (ogl_img[ogl_px_idx + 1] & 0xF0) | (ogl_img[ogl_px_idx + 1] >> 4);
+                    break;
+                }
+
+                default:
+                    LOG_CRITICAL(Render_Software, "Unknown framebuffer color format %x", g_last_fb_color_format);
+                    UNIMPLEMENTED();
+                }
+            }
+        }
+
+        delete ogl_img;
+
+        // TODO: commit depth buffer to g_last_fb_depth_addr - still use morton?
+    }
+}
+
 void RendererOpenGL::BeginBatch() {
     render_window->MakeCurrent();
+
+    u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
+    u32 cur_fb_color_format = Pica::registers.framebuffer.color_format.Value();
+    u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
+    u32 cur_fb_depth_format = Pica::registers.framebuffer.depth_format;
+
+    bool fb_switched = (g_last_fb_color_addr != cur_fb_color_addr || g_last_fb_depth_addr != cur_fb_depth_addr ||
+                        g_last_fb_color_format != cur_fb_color_format || g_last_fb_depth_format != cur_fb_depth_format);
+    bool fb_resized = (hw_fb_texture.width != Pica::registers.framebuffer.GetWidth() ||
+                        hw_fb_texture.height != Pica::registers.framebuffer.GetHeight());
+    bool fb_format_changed = (hw_fb_texture.format != (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value());
+
+    if (fb_switched) {
+        CommitFramebuffer();
+
+        g_last_fb_color_addr = cur_fb_color_addr;
+        g_last_fb_color_format = cur_fb_color_format;
+        g_last_fb_depth_addr = cur_fb_depth_addr;
+        g_last_fb_depth_format = cur_fb_depth_format;
+    }
+
+    if (fb_resized || fb_format_changed) {
+        ReconfigureTexture(hw_fb_texture, (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value(), Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
+    }
+
+    if (fb_resized) {
+        glBindRenderbuffer(GL_RENDERBUFFER, hw_framedepthbuffer);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+        glViewport(0, 0, Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
+    }
+
+    if (fb_switched) {
+        // TODO: should actually read in color+depth buffers from fb in memory instead of clearing
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
+
+    // Breaks oot since winding not consistent
+    //switch (Pica::registers.cull_mode.Value()) {
+    //case Pica::Regs::CullMode::KeepAll:
+    //    glDisable(GL_CULL_FACE);
+    //    break;
+    //
+    //case Pica::Regs::CullMode::KeepClockWise:
+    //    glEnable(GL_CULL_FACE);
+    //    glCullFace(GL_BACK);
+    //    break;
+    //
+    //case Pica::Regs::CullMode::KeepCounterClockWise:
+    //    glEnable(GL_CULL_FACE);
+    //    glCullFace(GL_FRONT);
+    //    break;
+    //
+    //default:
+    //    LOG_ERROR(Render_OpenGL, "Unknown cull mode %d", Pica::registers.cull_mode.Value());
+    //    break;
+    //}
 
     if (Pica::registers.output_merger.depth_test_enable.Value()) {
         glEnable(GL_DEPTH_TEST);
@@ -673,31 +769,11 @@ void RendererOpenGL::DrawTriangle(const RawVertex& v0, const RawVertex& v1, cons
 void RendererOpenGL::EndBatch() {
     render_window->MakeCurrent();
 
-    u32 cur_fb = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-
-    if (g_first_fb == -1) {
-        // HACK: just keeps first fb addr to differentiate top/bot screens
-        g_first_fb = cur_fb;
-    }
-
-    // TODO: reimplement when actual fb switch can be caught - currently every-frame hack for cave story resolution
-    //if (g_last_fb != cur_fb) {
-        int fbidx = cur_fb != g_first_fb;
-        
-        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[fbidx]);
-        
-        glViewport(0, 0, textures[fbidx].width, textures[fbidx].height);
-
-        g_last_fb = cur_fb;
-    //}
-
     glBindBuffer(GL_ARRAY_BUFFER, hw_vertex_buffer_handle);
     glBufferData(GL_ARRAY_BUFFER, g_vertex_batch.size() * sizeof(RawVertex), g_vertex_batch.data(), GL_STREAM_DRAW);
 
     glDrawArrays(GL_TRIANGLES, 0, g_vertex_batch.size());
     g_vertex_batch.clear();
-
-    g_did_render = 1;
 }
 
 void RendererOpenGL::SetUniformBool(u32 index, int value) {
@@ -721,17 +797,48 @@ void RendererOpenGL::SetUniformFloats(u32 index, const float* values) {
 #endif
 }
 
-void RendererOpenGL::NotifyDMACopy(u32 address, u32 size) {
+void RendererOpenGL::NotifyDMACopy(u32 dest, u32 size) {
     // Flush any texture that falls in the overwritten region
     // TODO: Should maintain size of tex and do actual check for region overlap, else assume that DMA always covers start address
     for (auto iter = g_tex_cache.begin(); iter != g_tex_cache.end();) {
-        if ((u32)iter->first >= address && (u32)iter->first <= address + size) {
+        if ((u32)iter->first >= dest && (u32)iter->first <= dest + size) {
             glDeleteTextures(1, &iter->second);
             iter = g_tex_cache.erase(iter);
         } else {
             ++iter;
         }
     }
+}
+
+void RendererOpenGL::NotifyPreDisplayTransfer(u32 src, u32 dest)
+{
+    if (src == Pica::registers.framebuffer.GetColorBufferPhysicalAddress())
+    {
+        if (dest == GPU::g_regs.framebuffer_config[0].address_left1 ||
+            dest == GPU::g_regs.framebuffer_config[0].address_left2 ||
+            dest == GPU::g_regs.framebuffer_config[0].address_right1 ||
+            dest == GPU::g_regs.framebuffer_config[0].address_right2) {
+            // Copy fb to top screen tex
+        }
+        else if (dest == GPU::g_regs.framebuffer_config[1].address_left1 ||
+            dest == GPU::g_regs.framebuffer_config[1].address_left2 ||
+            dest == GPU::g_regs.framebuffer_config[1].address_right1 ||
+            dest == GPU::g_regs.framebuffer_config[1].address_right2) {
+            // Copy fb to bot screen tex
+        }
+
+        // TODO: Copy framebuffer to actual memory here
+
+    }
+
+    // RE: the above, can cache fb's and do a fast copy if it's trying to copy fb to region that LCD is pointing at
+    // can circumvent the copy by not copying to mem and only to textures[0] or texture[1] (staying within ogl)
+    // must also kill the mem->textures[0,1] upload in swapbuffers in that case
+    // can also support HD this way, by keeping fb's in higher res
+
+    CommitFramebuffer();
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 /// Updates the framerate

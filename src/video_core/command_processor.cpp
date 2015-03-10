@@ -384,6 +384,10 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                 new_vert.attribs[1][3] = output.color.w.ToFloat32();
                 new_vert.attribs[2][0] = output.tc0.x.ToFloat32();
                 new_vert.attribs[2][1] = output.tc0.y.ToFloat32();
+                new_vert.attribs[2][2] = output.tc1.x.ToFloat32();
+                new_vert.attribs[2][3] = output.tc1.y.ToFloat32();
+                new_vert.attribs[4][2] = output.tc2.x.ToFloat32();
+                new_vert.attribs[4][3] = output.tc2.y.ToFloat32();
 
                 ogl_primitive_assembler.SubmitVertex(new_vert, ProcessHWTriangle);
             }

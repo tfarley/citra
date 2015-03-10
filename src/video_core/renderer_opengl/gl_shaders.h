@@ -61,7 +61,7 @@ const char g_fragment_shader_hw[] = R"(
 #version 150 core
 
 in vec4 o[7];
-out vec4 color;
+out vec4 color_out;
 
 uniform int alphatest_func;
 uniform float alphatest_ref;
@@ -84,9 +84,11 @@ vec4 GetSource(int source) {
         return texture(tex[0], o[out_maps[3]].xy);
     }
     else if (source == 4) {
+        // TODO: correct tex coords
         return texture(tex[1], o[out_maps[3]].xy);
     }
     else if (source == 5) {
+        // TODO: correct tex coords
         return texture(tex[2], o[out_maps[3]].xy);
     }
     else if (source == 6) {
@@ -306,7 +308,7 @@ void main(void) {
         }
     }
 
-    color = g_last_tex_env_out;
+    color_out = g_last_tex_env_out;
 }
 )";
 

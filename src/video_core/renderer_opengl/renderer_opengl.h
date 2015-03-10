@@ -17,7 +17,6 @@
 
 #define USE_OGL_RENDERER
 #define USE_OGL_VTXSHADER
-#define USE_OGL_HD
 
 class EmuWindow;
 
@@ -48,6 +47,8 @@ public:
     /// Shutdown the renderer
     void ShutDown() override;
 
+    void CommitFramebuffer();
+
     void BeginBatch();
     void DrawTriangle(const RawVertex& v0, const RawVertex& v1, const RawVertex& v2);
     void EndBatch();
@@ -56,7 +57,8 @@ public:
     void SetUniformInts(u32 index, const u32* values);
     void SetUniformFloats(u32 index, const float* values);
 
-    void NotifyDMACopy(u32 address, u32 size);
+    void NotifyDMACopy(u32 dest, u32 size);
+    void NotifyPreDisplayTransfer(u32 src, u32 dest);
 
 private:
     /// Structure used for storing information about the textures for each 3DS screen
@@ -70,11 +72,9 @@ private:
     };
 
     void InitOpenGLObjects();
-	Math::Vec2<u32> GetDesiredFramebufferSize(TextureInfo& texture,
-												const GPU::Regs::FramebufferConfig& framebuffer);
+    static void ReconfigureTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height);
     static void ConfigureFramebufferTexture(TextureInfo& texture,
                                             const GPU::Regs::FramebufferConfig& framebuffer);
-    void ConfigureHWFramebuffer(int fb_index);
     void DrawScreens();
     void DrawSingleScreenRotated(const TextureInfo& texture, float x, float y, float w, float h);
     void UpdateFramerate();
@@ -104,11 +104,12 @@ private:
     GLuint attrib_position;
     GLuint attrib_tex_coord;
     // Hardware renderer
+    TextureInfo hw_fb_texture;
     GLuint hw_program_id;
     GLuint hw_vertex_array_handle;
     GLuint hw_vertex_buffer_handle;
-    GLuint hw_framebuffers[2];
-    GLuint hw_framedepthbuffers[2];
+    GLuint hw_framebuffer;
+    GLuint hw_framedepthbuffer;
     // Hardware vertex shader
     GLuint attrib_v;
     GLuint uniform_c;

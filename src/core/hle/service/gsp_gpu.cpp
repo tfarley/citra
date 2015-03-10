@@ -394,6 +394,9 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
     case CommandId::SET_DISPLAY_TRANSFER:
     {
         auto& params = command.image_copy;
+
+        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyPreDisplayTransfer(params.in_buffer_address, params.out_buffer_address);
+
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.input_address)),
                 Memory::VirtualToPhysicalAddress(params.in_buffer_address) >> 3);
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.output_address)),
