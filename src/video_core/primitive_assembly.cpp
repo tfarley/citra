@@ -58,8 +58,6 @@ void PrimitiveAssembler<VertexType>::SubmitVertex(VertexType& vtx, TriangleHandl
 
 // explicitly instantiate use cases
 template
-struct PrimitiveAssembler<RawVertex>;
-template
 struct PrimitiveAssembler<VertexShader::OutputVertex>;
 template
 struct PrimitiveAssembler<DebugUtils::GeometryDumper::Vertex>;

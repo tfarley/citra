@@ -45,22 +45,32 @@ void main() {
 const char g_vertex_shader_hw[] = R"(
 #version 150 core
 
-in vec4 v[8];
-out vec4 o[7];
-
-uniform int out_maps[7];
+in vec4 vert_position;
+in vec4 vert_color;
+in vec2 vert_texcoord0;
+in vec2 vert_texcoord1;
+in vec2 vert_texcoord2;
+out vec4 frag_color;
+out vec2 frag_texcoord0;
+out vec2 frag_texcoord1;
+out vec2 frag_texcoord2;
 
 void main() {
-    o[out_maps[2]] = v[1];
-    o[out_maps[3]] = v[2];
-    gl_Position = v[0];
+    frag_color = vert_color;
+    frag_texcoord0 = vert_texcoord0;
+    frag_texcoord1 = vert_texcoord1;
+    frag_texcoord2 = vert_texcoord2;
+    gl_Position = vec4(vert_position.x, -vert_position.y, -vert_position.z, vert_position.w);
 }
 )";
 
 const char g_fragment_shader_hw[] = R"(
 #version 150 core
 
-in vec4 o[7];
+in vec4 frag_color;
+in vec2 frag_texcoord0;
+in vec2 frag_texcoord1;
+in vec2 frag_texcoord2;
 out vec4 color_out;
 
 uniform int alphatest_func;
@@ -68,28 +78,27 @@ uniform float alphatest_ref;
 
 uniform sampler2D tex[3];
 uniform ivec4 tevs[6];
-uniform int out_maps[7];
 
 vec4 g_last_tex_env_out;
 vec4 g_const_color;
 
 vec4 GetSource(int source) {
     if (source == 0) {
-        return o[out_maps[2]];
+        return frag_color;
     }
     else if (source == 1) {
-        return o[out_maps[2]];
+        return frag_color;
     }
     else if (source == 3) {
-        return texture(tex[0], o[out_maps[3]].xy);
+        return texture(tex[0], frag_texcoord0);
     }
     else if (source == 4) {
         // TODO: correct tex coords
-        return texture(tex[1], o[out_maps[3]].xy);
+        return texture(tex[1], frag_texcoord0);
     }
     else if (source == 5) {
         // TODO: correct tex coords
-        return texture(tex[2], o[out_maps[3]].xy);
+        return texture(tex[2], frag_texcoord0);
     }
     else if (source == 6) {
         // TODO: no 4th texture?
@@ -101,7 +110,7 @@ vec4 GetSource(int source) {
         return g_last_tex_env_out;
     }
 
-    return o[out_maps[2]];
+    return frag_color;
 }
 
 vec3 GetColorModifier(int factor, vec4 color) {

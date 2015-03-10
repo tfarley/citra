@@ -14,7 +14,6 @@
 #include "video_core/renderer_opengl/gl_shaders.h"
 
 #include "video_core/pica.h"
-#include "video_core/shader_translator.h"
 #include "video_core/vertex_shader.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/utils.h"
@@ -28,7 +27,7 @@ GLuint g_cur_shader = -1;
 u32 g_cur_shader_main = -1;
 std::map<u32, GLuint> g_shader_cache;
 
-std::vector<RawVertex> g_vertex_batch;
+std::vector<struct GameWorldVertex> g_vertex_batch;
 
 u32 g_last_fb_color_addr = -1;
 u32 g_last_fb_color_format;
@@ -48,6 +47,34 @@ struct ScreenRectVertex {
 
     GLfloat position[2];
     GLfloat tex_coord[2];
+};
+
+/**
+* Vertex structure that the hardware renderer uses.
+*/
+struct GameWorldVertex {
+    GameWorldVertex(const Pica::VertexShader::OutputVertex& v) {
+        position[0] = v.pos.x.ToFloat32();
+        position[1] = v.pos.y.ToFloat32();
+        position[2] = v.pos.z.ToFloat32();
+        position[3] = v.pos.w.ToFloat32();
+        color[0] = v.color.x.ToFloat32();
+        color[1] = v.color.y.ToFloat32();
+        color[2] = v.color.z.ToFloat32();
+        color[3] = v.color.w.ToFloat32();
+        tex_coord0[0] = v.tc0.x.ToFloat32();
+        tex_coord0[1] = v.tc0.y.ToFloat32();
+        tex_coord1[0] = v.tc1.x.ToFloat32();
+        tex_coord1[1] = v.tc1.y.ToFloat32();
+        tex_coord2[0] = v.tc2.x.ToFloat32();
+        tex_coord2[1] = v.tc2.y.ToFloat32();
+    }
+
+    GLfloat position[4];
+    GLfloat color[4];
+    GLfloat tex_coord0[2];
+    GLfloat tex_coord1[2];
+    GLfloat tex_coord2[2];
 };
 
 /**
@@ -219,7 +246,11 @@ void RendererOpenGL::InitOpenGLObjects() {
 
     // Hardware renderer setup
     hw_program_id = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
-    attrib_v = glGetAttribLocation(hw_program_id, "v");
+    hw_attrib_position = glGetAttribLocation(hw_program_id, "vert_position");
+    hw_attrib_color = glGetAttribLocation(hw_program_id, "vert_color");
+    hw_attrib_texcoords[0] = glGetAttribLocation(hw_program_id, "vert_texcoord0");
+    hw_attrib_texcoords[1] = glGetAttribLocation(hw_program_id, "vert_texcoord1");
+    hw_attrib_texcoords[2] = glGetAttribLocation(hw_program_id, "vert_texcoord2");
 
     uniform_alphatest_func = glGetUniformLocation(hw_program_id, "alphatest_func");
     uniform_alphatest_ref = glGetUniformLocation(hw_program_id, "alphatest_ref");
@@ -243,10 +274,16 @@ void RendererOpenGL::InitOpenGLObjects() {
 
     glUseProgram(hw_program_id);
 
-    for (int i = 0; i < 8; i++) {
-        glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
-        glEnableVertexAttribArray(attrib_v + i);
-    }
+    glVertexAttribPointer(hw_attrib_position, 4, GL_FLOAT, GL_FALSE, sizeof(GameWorldVertex), (GLvoid*)offsetof(GameWorldVertex, position));
+    glVertexAttribPointer(hw_attrib_color, 4, GL_FLOAT, GL_FALSE, sizeof(GameWorldVertex), (GLvoid*)offsetof(GameWorldVertex, color));
+    glVertexAttribPointer(hw_attrib_texcoords[0], 2, GL_FLOAT, GL_FALSE, sizeof(GameWorldVertex), (GLvoid*)offsetof(GameWorldVertex, tex_coord0));
+    glVertexAttribPointer(hw_attrib_texcoords[1], 2, GL_FLOAT, GL_FALSE, sizeof(GameWorldVertex), (GLvoid*)offsetof(GameWorldVertex, tex_coord1));
+    glVertexAttribPointer(hw_attrib_texcoords[2], 2, GL_FLOAT, GL_FALSE, sizeof(GameWorldVertex), (GLvoid*)offsetof(GameWorldVertex, tex_coord2));
+    glEnableVertexAttribArray(hw_attrib_position);
+    glEnableVertexAttribArray(hw_attrib_color);
+    glEnableVertexAttribArray(hw_attrib_texcoords[0]);
+    glEnableVertexAttribArray(hw_attrib_texcoords[1]);
+    glEnableVertexAttribArray(hw_attrib_texcoords[2]);
 
     glGenTextures(1, &hw_fb_texture.handle);
 
@@ -631,72 +668,6 @@ void RendererOpenGL::BeginBatch() {
         glDisable(GL_BLEND);
     }
 
-    // Uncomment to get shader translator output
-    //FILE* outfile = fopen("shaderdecomp.txt", "w");
-    //fwrite(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).length(), 1, outfile);
-    //fclose(outfile);
-    //exit(0);
-    
-#ifdef USE_OGL_VTXSHADER
-    // Switch shaders
-    // TODO: Should never use g_vertex_shader_hw if using glsl shaders for rendering, but for now just switch every time
-    //if (g_cur_shader_main != Pica::registers.vs_main_offset) {
-        g_cur_shader_main = Pica::registers.vs_main_offset;
-
-        std::map<u32, GLuint>::iterator cachedShader = g_shader_cache.find(Pica::registers.vs_main_offset);
-        if (cachedShader != g_shader_cache.end()) {
-            g_cur_shader = cachedShader->second;
-        } else {
-            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw);
-
-            g_shader_cache.insert(std::pair<u32, GLuint>(Pica::registers.vs_main_offset, g_cur_shader));
-        }
-
-        glUseProgram(g_cur_shader);
-
-        // TODO: probably a bunch of redundant stuff in here
-        attrib_v = glGetAttribLocation(g_cur_shader, "v");
-
-        uniform_c = glGetUniformLocation(g_cur_shader, "c");
-        uniform_b = glGetUniformLocation(g_cur_shader, "b");
-        uniform_i = glGetUniformLocation(g_cur_shader, "i");
-
-        uniform_alphatest_func = glGetUniformLocation(g_cur_shader, "alphatest_func");
-        uniform_alphatest_ref = glGetUniformLocation(g_cur_shader, "alphatest_ref");
-
-        uniform_tex = glGetUniformLocation(g_cur_shader, "tex");
-        uniform_tevs = glGetUniformLocation(g_cur_shader, "tevs");
-        uniform_out_maps = glGetUniformLocation(g_cur_shader, "out_maps");
-
-        glUniform1i(uniform_tex, 0);
-        glUniform1i(uniform_tex + 1, 1);
-        glUniform1i(uniform_tex + 2, 2);
-
-        for (int i = 0; i < 8; i++) {
-            glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
-            glEnableVertexAttribArray(attrib_v + i);
-        }
-    //}
-#endif
-
-    for (int i = 0; i < 7; ++i) {
-        const auto& output_register_map = Pica::registers.vs_output_attributes[i];
-
-        u32 semantics[4] = {
-            output_register_map.map_x.Value(), output_register_map.map_y.Value(),
-            output_register_map.map_z.Value(), output_register_map.map_w.Value()
-        };
-
-        // TODO: actually assign each component semantics, not just whole-vec4's
-        // Also might only need to do this once per shader?
-        if (output_register_map.map_x.Value() % 4 == 0) {
-            glUniform1i(uniform_out_maps + output_register_map.map_x.Value() / 4, i);
-        }
-
-        //for (int comp = 0; comp < 4; ++comp)
-        //    state.output_register_table[4 * i + comp] = ((float24*)&ret) + semantics[comp];
-    }
-
     auto tev_stages = Pica::registers.GetTevStages();
     for (int i = 0; i < 6; i++) {
         glUniform4iv(uniform_tevs + i, 1, (GLint *)(&tev_stages[i]));
@@ -760,41 +731,20 @@ void RendererOpenGL::BeginBatch() {
     }
 }
 
-void RendererOpenGL::DrawTriangle(const RawVertex& v0, const RawVertex& v1, const RawVertex& v2) {
-    g_vertex_batch.push_back(v0);
-    g_vertex_batch.push_back(v1);
-    g_vertex_batch.push_back(v2);
+void RendererOpenGL::DrawTriangle(const Pica::VertexShader::OutputVertex& v0, const Pica::VertexShader::OutputVertex& v1, const Pica::VertexShader::OutputVertex& v2) {
+    g_vertex_batch.push_back(GameWorldVertex(v0));
+    g_vertex_batch.push_back(GameWorldVertex(v1));
+    g_vertex_batch.push_back(GameWorldVertex(v2));
 }
 
 void RendererOpenGL::EndBatch() {
     render_window->MakeCurrent();
 
     glBindBuffer(GL_ARRAY_BUFFER, hw_vertex_buffer_handle);
-    glBufferData(GL_ARRAY_BUFFER, g_vertex_batch.size() * sizeof(RawVertex), g_vertex_batch.data(), GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, g_vertex_batch.size() * sizeof(GameWorldVertex), g_vertex_batch.data(), GL_STREAM_DRAW);
 
     glDrawArrays(GL_TRIANGLES, 0, g_vertex_batch.size());
     g_vertex_batch.clear();
-}
-
-void RendererOpenGL::SetUniformBool(u32 index, int value) {
-#ifdef USE_OGL_VTXSHADER
-    render_window->MakeCurrent();
-    glUniform1i(uniform_b + index, value);
-#endif
-}
-
-void RendererOpenGL::SetUniformInts(u32 index, const u32* values) {
-#ifdef USE_OGL_VTXSHADER
-    render_window->MakeCurrent();
-    glUniform4iv(uniform_i + index, 1, (const GLint*)values);
-#endif
-}
-
-void RendererOpenGL::SetUniformFloats(u32 index, const float* values) {
-#ifdef USE_OGL_VTXSHADER
-    render_window->MakeCurrent();
-    glUniform4fv(uniform_c + index, 1, values);
-#endif
 }
 
 void RendererOpenGL::NotifyDMACopy(u32 dest, u32 size) {

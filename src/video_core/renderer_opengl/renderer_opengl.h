@@ -16,15 +16,16 @@
 #include "video_core/renderer_base.h"
 
 #define USE_OGL_RENDERER
-#define USE_OGL_VTXSHADER
 
 class EmuWindow;
 
-struct RawVertex {
-    RawVertex() = default;
+namespace Pica {
 
-    float attribs[8][4];
-};
+namespace VertexShader {
+    struct OutputVertex;
+}
+
+}
 
 class RendererOpenGL : public RendererBase {
 public:
@@ -50,12 +51,8 @@ public:
     void CommitFramebuffer();
 
     void BeginBatch();
-    void DrawTriangle(const RawVertex& v0, const RawVertex& v1, const RawVertex& v2);
+    void DrawTriangle(const Pica::VertexShader::OutputVertex& v0, const Pica::VertexShader::OutputVertex& v1, const Pica::VertexShader::OutputVertex& v2);
     void EndBatch();
-
-    void SetUniformBool(u32 index, int value);
-    void SetUniformInts(u32 index, const u32* values);
-    void SetUniformFloats(u32 index, const float* values);
 
     void NotifyDMACopy(u32 dest, u32 size);
     void NotifyPreDisplayTransfer(u32 src, u32 dest);
@@ -111,7 +108,9 @@ private:
     GLuint hw_framebuffer;
     GLuint hw_framedepthbuffer;
     // Hardware vertex shader
-    GLuint attrib_v;
+    GLuint hw_attrib_position;
+    GLuint hw_attrib_color;
+    GLuint hw_attrib_texcoords[3];
     GLuint uniform_c;
     GLuint uniform_b;
     GLuint uniform_i;
