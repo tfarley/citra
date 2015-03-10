@@ -6,9 +6,6 @@
 #include "primitive_assembly.h"
 #include "vertex_shader.h"
 
-#include "video_core.h"
-#include "renderer_opengl/renderer_opengl.h"
-
 #include "common/logging/log.h"
 #include "video_core/debug_utils/debug_utils.h"
 

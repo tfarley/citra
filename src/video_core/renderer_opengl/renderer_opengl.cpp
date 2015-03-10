@@ -111,13 +111,12 @@ void RendererOpenGL::SwapBuffers() {
     for(int i : {0, 1}) {
         const auto& framebuffer = GPU::g_regs.framebuffer_config[i];
 
-        if (textures[i].width != framebuffer.width ||
-            textures[i].height != framebuffer.height ||
+        if (textures[i].width != (GLsizei)framebuffer.width ||
+            textures[i].height != (GLsizei)framebuffer.height ||
             textures[i].format != framebuffer.color_format) {
             // Reallocate texture if the framebuffer size has changed.
             // This is expected to not happen very often and hence should not be a
             // performance problem.
-
             ConfigureFramebufferTexture(textures[i], framebuffer);
         }
 
@@ -131,12 +130,6 @@ void RendererOpenGL::SwapBuffers() {
 
     glBindVertexArray(hw_vertex_array_handle);
     glUseProgram(hw_program_id);
-
-#ifdef USE_OGL_RENDERER
-    // TODO: check if really needed
-    //glFlush();
-    //glFinish();
-#endif
 
     auto& profiler = Common::Profiling::GetProfilingManager();
     profiler.FinishFrame();
@@ -252,16 +245,15 @@ void RendererOpenGL::InitOpenGLObjects() {
     hw_attrib_texcoords[1] = glGetAttribLocation(hw_program_id, "vert_texcoord1");
     hw_attrib_texcoords[2] = glGetAttribLocation(hw_program_id, "vert_texcoord2");
 
-    uniform_alphatest_func = glGetUniformLocation(hw_program_id, "alphatest_func");
-    uniform_alphatest_ref = glGetUniformLocation(hw_program_id, "alphatest_ref");
+    hw_uniform_alphatest_func = glGetUniformLocation(hw_program_id, "alphatest_func");
+    hw_uniform_alphatest_ref = glGetUniformLocation(hw_program_id, "alphatest_ref");
 
-    uniform_tex = glGetUniformLocation(hw_program_id, "tex");
-    uniform_tevs = glGetUniformLocation(hw_program_id, "tevs");
-    uniform_out_maps = glGetUniformLocation(hw_program_id, "out_maps");
+    hw_uniform_tex = glGetUniformLocation(hw_program_id, "tex");
+    hw_uniform_tevs = glGetUniformLocation(hw_program_id, "tevs");
 
-    glUniform1i(uniform_tex, 0);
-    glUniform1i(uniform_tex + 1, 1);
-    glUniform1i(uniform_tex + 2, 2);
+    glUniform1i(hw_uniform_tex, 0);
+    glUniform1i(hw_uniform_tex + 1, 1);
+    glUniform1i(hw_uniform_tex + 2, 2);
 
     glGenBuffers(1, &hw_vertex_buffer_handle);
 
@@ -361,7 +353,7 @@ void RendererOpenGL::ReconfigureTexture(TextureInfo& texture, GPU::Regs::PixelFo
 
     glBindTexture(GL_TEXTURE_2D, texture.handle);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
-        texture.gl_format, texture.gl_type, nullptr);
+            texture.gl_format, texture.gl_type, nullptr);
 }
 
 void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
@@ -581,7 +573,7 @@ void RendererOpenGL::BeginBatch() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
 
-    // Breaks oot since winding not consistent
+    // TODO: Breaks oot since winding not consistent
     //switch (Pica::registers.cull_mode.Value()) {
     //case Pica::Regs::CullMode::KeepAll:
     //    glDisable(GL_CULL_FACE);
@@ -670,14 +662,14 @@ void RendererOpenGL::BeginBatch() {
 
     auto tev_stages = Pica::registers.GetTevStages();
     for (int i = 0; i < 6; i++) {
-        glUniform4iv(uniform_tevs + i, 1, (GLint *)(&tev_stages[i]));
+        glUniform4iv(hw_uniform_tevs + i, 1, (GLint *)(&tev_stages[i]));
     }
 
     if (Pica::registers.output_merger.alpha_test.enable.Value()) {
-        glUniform1i(uniform_alphatest_func, Pica::registers.output_merger.alpha_test.func.Value());
-        glUniform1f(uniform_alphatest_ref, Pica::registers.output_merger.alpha_test.ref.Value() / 255.0f);
+        glUniform1i(hw_uniform_alphatest_func, Pica::registers.output_merger.alpha_test.func.Value());
+        glUniform1f(hw_uniform_alphatest_ref, Pica::registers.output_merger.alpha_test.ref.Value() / 255.0f);
     } else {
-        glUniform1i(uniform_alphatest_func, 1);
+        glUniform1i(hw_uniform_alphatest_func, 1);
     }
 
     auto pica_textures = Pica::registers.GetTextures();

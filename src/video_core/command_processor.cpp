@@ -211,9 +211,8 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
         }
 
         case PICA_REG_INDEX(vs_bool_uniforms):
-            for (unsigned i = 0; i < 16; ++i) {
+            for (unsigned i = 0; i < 16; ++i)
                 VertexShader::GetBoolUniform(i) = (registers.vs_bool_uniforms.Value() & (1 << i)) != 0;
-            }
 
             break;
 
@@ -261,9 +260,8 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
                 // NOTE: The destination component order indeed is "backwards"
                 if (uniform_setup.IsFloat32()) {
-                    for (auto i : {0,1,2,3}) {
+                    for (auto i : {0,1,2,3})
                         uniform[3 - i] = float24::FromFloat32(*(float*)(&uniform_write_buffer[i]));
-                    }
                 } else {
                     // TODO: Untested
                     uniform.w = float24::FromRawFloat24(uniform_write_buffer[0] >> 8);

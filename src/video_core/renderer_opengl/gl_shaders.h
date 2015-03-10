@@ -236,11 +236,6 @@ float AlphaCombine(int op, float alpha[3]) {
 }
 
 void ProcessTexEnv(int tex_env_idx) {
-    // x = int sources;
-    // y = int modifiers;
-    // z = int ops;
-    // w = int const_col;
-
     int color_source1 = tevs[tex_env_idx].x & 0xF;
     int color_source2 = (tevs[tex_env_idx].x >> 4) & 0xF;
     int color_source3 = (tevs[tex_env_idx].x >> 8) & 0xF;

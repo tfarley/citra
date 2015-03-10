@@ -9,7 +9,6 @@
 #include "generated/gl_3_2_core.h"
 
 #include "common/math_util.h"
-#include "video_core/math.h"
 
 #include "core/hw/gpu.h"
 
@@ -111,14 +110,10 @@ private:
     GLuint hw_attrib_position;
     GLuint hw_attrib_color;
     GLuint hw_attrib_texcoords[3];
-    GLuint uniform_c;
-    GLuint uniform_b;
-    GLuint uniform_i;
     // Hardware fragment shader
-    GLuint uniform_alphatest_func;
-    GLuint uniform_alphatest_ref;
-    GLuint uniform_tex;
-    GLuint uniform_tevs;
-    GLuint uniform_out_maps;
-    GLuint uniform_tex_envs;
+    GLuint hw_uniform_alphatest_func;
+    GLuint hw_uniform_alphatest_ref;
+    GLuint hw_uniform_tex;
+    GLuint hw_uniform_tevs;
+    GLuint hw_uniform_tex_envs;
 };
