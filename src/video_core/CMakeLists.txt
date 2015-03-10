@@ -7,6 +7,7 @@ set(SRCS
             command_processor.cpp
             primitive_assembly.cpp
             rasterizer.cpp
+            shader_translator.cpp
             utils.cpp
             vertex_shader.cpp
             video_core.cpp
@@ -27,6 +28,7 @@ set(HEADERS
             primitive_assembly.h
             rasterizer.h
             renderer_base.h
+            shader_translator.h
             utils.h
             vertex_shader.h
             video_core.h

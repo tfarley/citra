@@ -12,6 +12,9 @@
 
 #include "video_core/gpu_debugger.h"
 
+#include "video_core/video_core.h"
+#include "video_core/renderer_opengl/renderer_opengl.h"
+
 // Main graphics debugger object - TODO: Here is probably not the best place for this
 GraphicsDebugger g_debugger;
 
@@ -344,6 +347,10 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
                Memory::GetPointer(command.dma_request.source_address),
                command.dma_request.size);
         SignalInterrupt(InterruptId::DMA);
+
+        // TODO: Hook FlushDataCache() instead once mapping between address and texture data is discovered
+        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyDMACopy(Memory::VirtualToPhysicalAddress(command.dma_request.dest_address), command.dma_request.size);
+
         break;
 
     // ctrulib homebrew sends all relevant command list data with this command,
