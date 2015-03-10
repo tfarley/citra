@@ -9,12 +9,23 @@
 #include "generated/gl_3_2_core.h"
 
 #include "common/math_util.h"
+#include "video_core/math.h"
 
 #include "core/hw/gpu.h"
 
 #include "video_core/renderer_base.h"
 
+#define USE_OGL_RENDERER
+#define USE_OGL_VTXSHADER
+#define USE_OGL_HD
+
 class EmuWindow;
+
+struct RawVertex {
+    RawVertex() = default;
+
+    float attribs[8][4];
+};
 
 class RendererOpenGL : public RendererBase {
 public:
@@ -37,6 +48,16 @@ public:
     /// Shutdown the renderer
     void ShutDown() override;
 
+    void BeginBatch();
+    void DrawTriangle(const RawVertex& v0, const RawVertex& v1, const RawVertex& v2);
+    void EndBatch();
+
+    void SetUniformBool(u32 index, int value);
+    void SetUniformInts(u32 index, const u32* values);
+    void SetUniformFloats(u32 index, const float* values);
+
+    void NotifyDMACopy(u32 address, u32 size);
+
 private:
     /// Structure used for storing information about the textures for each 3DS screen
     struct TextureInfo {
@@ -49,8 +70,11 @@ private:
     };
 
     void InitOpenGLObjects();
+	Math::Vec2<u32> GetDesiredFramebufferSize(TextureInfo& texture,
+												const GPU::Regs::FramebufferConfig& framebuffer);
     static void ConfigureFramebufferTexture(TextureInfo& texture,
                                             const GPU::Regs::FramebufferConfig& framebuffer);
+    void ConfigureHWFramebuffer(int fb_index);
     void DrawScreens();
     void DrawSingleScreenRotated(const TextureInfo& texture, float x, float y, float w, float h);
     void UpdateFramerate();
@@ -82,4 +106,22 @@ private:
     // Shader attribute input indices
     GLuint attrib_position;
     GLuint attrib_tex_coord;
+    // Hardware renderer
+    GLuint hw_program_id;
+    GLuint hw_vertex_array_handle;
+    GLuint hw_vertex_buffer_handle;
+    GLuint hw_framebuffers[2];
+    GLuint hw_framedepthbuffers[2];
+    // Hardware vertex shader
+    GLuint attrib_v;
+    GLuint uniform_c;
+    GLuint uniform_b;
+    GLuint uniform_i;
+    // Hardware fragment shader
+    GLuint uniform_alphatest_func;
+    GLuint uniform_alphatest_ref;
+    GLuint uniform_tex;
+    GLuint uniform_tevs;
+    GLuint uniform_out_maps;
+    GLuint uniform_tex_envs;
 };
