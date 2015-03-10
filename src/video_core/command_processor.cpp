@@ -12,6 +12,7 @@
 #include "pica.h"
 #include "primitive_assembly.h"
 #include "vertex_shader.h"
+#include "core/settings.h"
 #include "core/hle/service/gsp_gpu.h"
 #include "core/hw/gpu.h"
 
@@ -104,9 +105,9 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                 }
             }
 
-#ifdef USE_OGL_RENDERER
-            ((RendererOpenGL *)VideoCore::g_renderer)->BeginBatch();
-#endif
+            if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+                ((RendererOpenGL *)VideoCore::g_renderer)->BeginBatch();
+            }
 
             // Load vertices
             bool is_indexed = (id == PICA_REG_INDEX(trigger_draw_indexed));
@@ -191,16 +192,16 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                 }
 
                 // Send to triangle clipper
-#ifndef USE_OGL_RENDERER
-                clipper_primitive_assembler.SubmitVertex(output, Clipper::ProcessTriangle);
-#else
-                clipper_primitive_assembler.SubmitVertex(output, ProcessHWTriangle);
-#endif
+                if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+                    clipper_primitive_assembler.SubmitVertex(output, ProcessHWTriangle);
+                } else {
+                    clipper_primitive_assembler.SubmitVertex(output, Clipper::ProcessTriangle);
+                }
             }
 
-#ifdef USE_OGL_RENDERER
-            ((RendererOpenGL *)VideoCore::g_renderer)->EndBatch();
-#endif
+            if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+                ((RendererOpenGL *)VideoCore::g_renderer)->EndBatch();
+            }
 
             geometry_dumper.Dump();
 

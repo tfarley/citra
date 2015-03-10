@@ -14,8 +14,6 @@
 
 #include "video_core/renderer_base.h"
 
-#define USE_OGL_RENDERER
-
 class EmuWindow;
 
 namespace Pica {

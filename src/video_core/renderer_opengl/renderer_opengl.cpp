@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include "core/settings.h"
 #include "core/hw/gpu.h"
 #include "core/mem_map.h"
 
@@ -22,10 +23,6 @@
 #include <algorithm>
 
 std::map<u32, GLuint> g_tex_cache;
-
-GLuint g_cur_shader = -1;
-u32 g_cur_shader_main = -1;
-std::map<u32, GLuint> g_shader_cache;
 
 std::vector<struct GameWorldVertex> g_vertex_batch;
 
@@ -144,11 +141,11 @@ void RendererOpenGL::SwapBuffers() {
 
     profiler.BeginFrame();
 
-#ifdef USE_OGL_RENDERER
-    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffer);
-    glViewport(0, 0, hw_fb_texture.width, hw_fb_texture.height);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-#endif
+    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffer);
+        glViewport(0, 0, hw_fb_texture.width, hw_fb_texture.height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
 }
 
 /**
