@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include "core/settings.h"
 #include "core/hw/gpu.h"
 #include "core/hw/hw.h"
 #include "core/hw/lcd.h"
@@ -79,13 +80,13 @@ RendererOpenGL::~RendererOpenGL() {
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
-#ifdef USE_OGL_RENDERER
-    if (!g_did_render) {
-        return;
-    }
+    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+        if (!g_did_render) {
+            return;
+        }
 
-    g_did_render = 0;
-#endif
+        g_did_render = 0;
+    }
 
     render_window->MakeCurrent();
 
@@ -115,17 +116,15 @@ void RendererOpenGL::SwapBuffers() {
                 ConfigureFramebufferTexture(textures[i], framebuffer);
                 ConfigureHWFramebuffer(i);
             }
-#ifndef USE_OGL_RENDERER
-        LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
-#endif
+            if (!Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0)
+                LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
 
             // Resize the texture in case the framebuffer size has changed
             textures[i].width = desired_size.x;
             textures[i].height = desired_size.y;
         }
-#ifndef USE_OGL_RENDERER
-        LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
-#endif
+        if (!Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0)
+            LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
     }
 
     glBindVertexArray(vertex_array_handle);
@@ -136,11 +135,11 @@ void RendererOpenGL::SwapBuffers() {
     glBindVertexArray(hw_vertex_array_handle);
     glUseProgram(hw_program_id);
 
-#ifdef USE_OGL_RENDERER
-    // TODO: check if really needed
-    //glFlush();
-    //glFinish();
-#endif
+    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+        // TODO: check if really needed
+        //glFlush();
+        //glFinish();
+    }
 
     auto& profiler = Common::Profiling::GetProfilingManager();
     profiler.FinishFrame();
@@ -155,12 +154,12 @@ void RendererOpenGL::SwapBuffers() {
 
     profiler.BeginFrame();
 
-#ifdef USE_OGL_RENDERER
-    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[0]);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-#endif
+    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[0]);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
 }
 
 /**
