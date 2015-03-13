@@ -259,7 +259,7 @@ static void FlushDataCache(Service::Interface* self) {
     u32 size    = cmd_buff[2];
     u32 process = cmd_buff[4];
 
-    ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(Memory::VirtualToPhysicalAddress(address), size);
+    ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(false, Memory::VirtualToPhysicalAddress(address), size);
 
     // TODO(purpasmart96): Verify return header on HW
 
@@ -350,7 +350,7 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
                command.dma_request.size);
         SignalInterrupt(InterruptId::DMA);
 
-        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(Memory::VirtualToPhysicalAddress(command.dma_request.dest_address), command.dma_request.size);
+        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(true, Memory::VirtualToPhysicalAddress(command.dma_request.dest_address), command.dma_request.size);
 
         break;
 
@@ -368,7 +368,7 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
         // TODO: Not sure if we are supposed to always write this .. seems to trigger processing though
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(command_processor_config.trigger)), 1);
 
-        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(Memory::VirtualToPhysicalAddress(params.address), params.size);
+        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(true, Memory::VirtualToPhysicalAddress(params.address), params.size);
 
         break;
     }
@@ -392,8 +392,8 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(memory_fill_config[1].value_32bit)), params.value2);
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(memory_fill_config[1].control)), params.control2);
 
-        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(Memory::VirtualToPhysicalAddress(params.start1), params.end1 - params.start1);
-        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(Memory::VirtualToPhysicalAddress(params.start2), params.end2 - params.start2);
+        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(true, Memory::VirtualToPhysicalAddress(params.start1), params.end1 - params.start1);
+        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(true, Memory::VirtualToPhysicalAddress(params.start2), params.end2 - params.start2);
 
         break;
     }
@@ -413,7 +413,7 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.flags)), params.flags);
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.trigger)), 1);
 
-        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(Memory::VirtualToPhysicalAddress(params.out_buffer_address), params.out_buffer_size);
+        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(true, Memory::VirtualToPhysicalAddress(params.out_buffer_address), params.out_buffer_size);
 
         break;
     }
@@ -433,7 +433,7 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
         // TODO: Should this register be set to 1 or should instead its value be OR-ed with 1?
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.trigger)), 1);
 
-        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(Memory::VirtualToPhysicalAddress(params.out_buffer_address), params.out_buffer_size);
+        ((RendererOpenGL *)VideoCore::g_renderer)->NotifyFlush(true, Memory::VirtualToPhysicalAddress(params.out_buffer_address), params.out_buffer_size);
 
         break;
     }

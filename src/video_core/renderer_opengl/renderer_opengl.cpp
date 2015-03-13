@@ -871,18 +871,18 @@ void RendererOpenGL::ReloadDepthBuffer() {
     }
 }
 
-void RendererOpenGL::NotifyFlush(u32 paddr, u32 size) {
-    if (Pica::registers.framebuffer.GetColorBufferPhysicalAddress() >= paddr && Pica::registers.framebuffer.GetColorBufferPhysicalAddress() < paddr + size) {
+void RendererOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
+    if (is_phys_addr && Pica::registers.framebuffer.GetColorBufferPhysicalAddress() >= addr && Pica::registers.framebuffer.GetColorBufferPhysicalAddress() < addr + size) {
         ReloadColorBuffer();
-    } else if(Pica::registers.framebuffer.GetDepthBufferPhysicalAddress() >= paddr && Pica::registers.framebuffer.GetDepthBufferPhysicalAddress() < paddr + size) {
+    } else if(is_phys_addr && Pica::registers.framebuffer.GetDepthBufferPhysicalAddress() >= addr && Pica::registers.framebuffer.GetDepthBufferPhysicalAddress() < addr + size) {
         ReloadDepthBuffer();
     } else {
         render_window->MakeCurrent();
-
         // Flush any texture that falls in the flushed region
         // TODO: Should maintain size of tex and do actual check for region overlap, else assume that DMA always covers start address
         for (auto iter = g_tex_cache.begin(); iter != g_tex_cache.end();) {
-            if (iter->first >= paddr && iter->first <= paddr + size) {
+            u32 tex_comparison_addr = is_phys_addr ? iter->first : Pica::PAddrToVAddr(iter->first);
+            if (iter->first >= tex_comparison_addr && iter->first <= tex_comparison_addr + size) {
                 glDeleteTextures(1, &iter->second);
                 iter = g_tex_cache.erase(iter);
             } else {

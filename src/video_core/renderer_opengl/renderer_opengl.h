@@ -53,7 +53,7 @@ public:
     void ReloadColorBuffer();
     void ReloadDepthBuffer();
 
-    void NotifyFlush(u32 paddr, u32 size);
+    void NotifyFlush(bool is_phys_addr, u32 addr, u32 size);
     void NotifyPreDisplayTransfer(u32 src, u32 dest);
 
 private:
