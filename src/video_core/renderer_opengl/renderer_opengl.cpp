@@ -506,6 +506,26 @@ GLenum PICABlendFactorToOpenGL(u32 factor)
 void RendererOpenGL::BeginBatch() {
     render_window->MakeCurrent();
 
+    switch (Pica::registers.cull_mode.Value()) {
+    case Pica::Regs::CullMode::KeepAll:
+        glDisable(GL_CULL_FACE);
+        break;
+
+    case Pica::Regs::CullMode::KeepClockWise:
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        break;
+
+    case Pica::Regs::CullMode::KeepCounterClockWise:
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_FRONT);
+        break;
+
+    default:
+        LOG_ERROR(Render_OpenGL, "Unknown cull mode %d", Pica::registers.cull_mode.Value());
+        break;
+    }
+
     if (Pica::registers.output_merger.depth_test_enable.Value()) {
         glEnable(GL_DEPTH_TEST);
     } else {

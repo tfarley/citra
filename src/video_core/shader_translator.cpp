@@ -18,14 +18,13 @@ in vec4 v[8];
 
 out vec4 o[7];
 
-uniform mat4 viewMat, projMat;
-
 uniform vec4 c[96];
 uniform bool b[11];
 uniform int i[4];
 
 vec4 r[16];
 ivec4 idx;
+bvec2 cmp;
 
 )";
 
@@ -42,7 +41,6 @@ public:
 };
 
 // State used when translating
-std::string g_cmp_strings[2];
 std::vector<IfElseData> g_if_else_offset_stack;
 std::map<u32, std::string> g_fn_offset_map;
 
@@ -293,14 +291,9 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
 
         case nihstro::OpCode::Id::CMP:
         {
-            sprintf(instr_text, "%s.x %s %s.x", src1.c_str(), instr.common.compare_op.ToString(instr.common.compare_op.x).c_str(), src2.c_str());
-            g_cmp_strings[0] = instr_text;
-
-            sprintf(instr_text, "%s.y %s %s.y", src1.c_str(), instr.common.compare_op.ToString(instr.common.compare_op.y).c_str(), src2.c_str());
-            g_cmp_strings[1] = instr_text;
-
-            sprintf(instr_text, "// Culled CMP\n");
-
+            sprintf(instr_text, "cmp.x = %s.x %s %s.x;\ncmp.y = %s.y %s %s.y;",
+                src1.c_str(), instr.common.compare_op.ToString(instr.common.compare_op.x).c_str(), src2.c_str(),
+                src1.c_str(), instr.common.compare_op.ToString(instr.common.compare_op.y).c_str(), src2.c_str());
             break;
         }
 
@@ -340,19 +333,19 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
                 switch (instr.flow_control.op)
                 {
                 case nihstro::Instruction::FlowControlType::Or:
-                    sprintf(instr_text, "if (%c(%s) || %c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second.c_str());
+                    sprintf(instr_text, "if (%ccmp.x || %ccmp.y) { %s(); }\n", negate_or_space_x, negate_or_space_y, call_offset->second.c_str());
                     break;
 
                 case nihstro::Instruction::FlowControlType::And:
-                    sprintf(instr_text, "if (%c(%s) && %c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second.c_str());
+                    sprintf(instr_text, "if (%ccmp.x && %ccmp.y) { %s(); }\n", negate_or_space_x, negate_or_space_y, call_offset->second.c_str());
                     break;
 
                 case nihstro::Instruction::FlowControlType::JustX:
-                    sprintf(instr_text, "if (%c(%s)) { %s(); }\n", negate_or_space_x, g_cmp_strings[0].c_str(), call_offset->second.c_str());
+                    sprintf(instr_text, "if (%ccmp.x) { %s(); }\n", negate_or_space_x, call_offset->second.c_str());
                     break;
 
                 case nihstro::Instruction::FlowControlType::JustY:
-                    sprintf(instr_text, "if (%c(%s)) { %s(); }\n", negate_or_space_y, g_cmp_strings[1].c_str(), call_offset->second.c_str());
+                    sprintf(instr_text, "if (%ccmp.y) { %s(); }\n", negate_or_space_y, call_offset->second.c_str());
                     break;
 
                 default:
@@ -374,19 +367,19 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
             switch (instr.flow_control.op)
             {
             case nihstro::Instruction::FlowControlType::Or:
-                sprintf(instr_text, "if (%c(%s) || %c(%s)) {\n", negate_or_space_x, g_cmp_strings[0].c_str(), negate_or_space_y, g_cmp_strings[1].c_str());
+                sprintf(instr_text, "if (%ccmp.x || %ccmp.y) {\n", negate_or_space_x, negate_or_space_y);
                 break;
 
             case nihstro::Instruction::FlowControlType::And:
-                sprintf(instr_text, "if (%c(%s) && %c(%s)) {\n", negate_or_space_x, g_cmp_strings[0].c_str(), negate_or_space_y, g_cmp_strings[1].c_str());
+                sprintf(instr_text, "if (%ccmp.x && %ccmp.y) {\n", negate_or_space_x, negate_or_space_y);
                 break;
 
             case nihstro::Instruction::FlowControlType::JustX:
-                sprintf(instr_text, "if (%c(%s)) {\n", negate_or_space_x, g_cmp_strings[0].c_str());
+                sprintf(instr_text, "if (%ccmp.x) {\n", negate_or_space_x);
                 break;
 
             case nihstro::Instruction::FlowControlType::JustY:
-                sprintf(instr_text, "if (%c(%s)) {\n", negate_or_space_y, g_cmp_strings[1].c_str());
+                sprintf(instr_text, "if (%ccmp.y) {\n", negate_or_space_y);
                 break;
 
             default:
