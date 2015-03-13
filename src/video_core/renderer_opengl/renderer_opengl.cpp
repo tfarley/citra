@@ -882,7 +882,7 @@ void RendererOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
         // TODO: Should maintain size of tex and do actual check for region overlap, else assume that DMA always covers start address
         for (auto iter = g_tex_cache.begin(); iter != g_tex_cache.end();) {
             u32 tex_comparison_addr = is_phys_addr ? iter->first : Pica::PAddrToVAddr(iter->first);
-            if (iter->first >= tex_comparison_addr && iter->first <= tex_comparison_addr + size) {
+            if (tex_comparison_addr >= addr && tex_comparison_addr <= addr + size) {
                 glDeleteTextures(1, &iter->second);
                 iter = g_tex_cache.erase(iter);
             } else {
