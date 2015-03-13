@@ -43,6 +43,7 @@ public:
 // State used when translating
 std::vector<IfElseData> g_if_else_offset_list;
 std::map<u32, std::string> g_fn_offset_map;
+u32 g_cur_fn_entry;
 
 u32 GetRegMaskLen(u32 v)
 {
@@ -393,67 +394,78 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
 
         case nihstro::OpCode::Id::CALL:
         {
-            std::map<u32, std::string>::iterator call_offset = g_fn_offset_map.find(instr.flow_control.dest_offset.Value());
-            if (call_offset != g_fn_offset_map.end()) {
-                instr_text += call_offset->second;
-                instr_text += "();\n";
+            // Avoid recursive calls (occurs with multiple main()s)
+            if (g_cur_fn_entry != instr.flow_control.dest_offset.Value()) {
+                std::map<u32, std::string>::iterator call_offset = g_fn_offset_map.find(instr.flow_control.dest_offset.Value());
+                if (call_offset != g_fn_offset_map.end()) {
+                    instr_text += call_offset->second;
+                    instr_text += "();\n";
+                } else {
+                    instr_text = "// CALL to unknown offset\n";
+                }
             } else {
-                instr_text = "// CALL to unknown offset\n";
+                instr_text = "// Culled recursive CALL\n";
             }
+
             break;
         }
 
         case nihstro::OpCode::Id::CALLC:
         {
-            std::map<u32, std::string>::iterator call_offset = g_fn_offset_map.find(instr.flow_control.dest_offset.Value());
-            if (call_offset != g_fn_offset_map.end()) {
-                char negate_or_space_x = instr.flow_control.refx.Value() ? ' ' : '!';
-                char negate_or_space_y = instr.flow_control.refy.Value() ? ' ' : '!';
+            // Avoid recursive calls (occurs with multiple main()s)
+            if (g_cur_fn_entry != instr.flow_control.dest_offset.Value()) {
+                std::map<u32, std::string>::iterator call_offset = g_fn_offset_map.find(instr.flow_control.dest_offset.Value());
+                if (call_offset != g_fn_offset_map.end()) {
+                    char negate_or_space_x = instr.flow_control.refx.Value() ? ' ' : '!';
+                    char negate_or_space_y = instr.flow_control.refy.Value() ? ' ' : '!';
 
-                switch (instr.flow_control.op)
-                {
-                case nihstro::Instruction::FlowControlType::Or:
-                    instr_text += "if (";
-                    instr_text += negate_or_space_x;
-                    instr_text += "cmp.x || ";
-                    instr_text += negate_or_space_y;
-                    instr_text += "cmp.y) { ";
-                    instr_text += call_offset->second;
-                    instr_text += "(); }\n";
-                    break;
+                    switch (instr.flow_control.op)
+                    {
+                    case nihstro::Instruction::FlowControlType::Or:
+                        instr_text += "if (";
+                        instr_text += negate_or_space_x;
+                        instr_text += "cmp.x || ";
+                        instr_text += negate_or_space_y;
+                        instr_text += "cmp.y) { ";
+                        instr_text += call_offset->second;
+                        instr_text += "(); }\n";
+                        break;
 
-                case nihstro::Instruction::FlowControlType::And:
-                    instr_text += "if (";
-                    instr_text += negate_or_space_x;
-                    instr_text += "cmp.x && ";
-                    instr_text += negate_or_space_y;
-                    instr_text += "cmp.y) { ";
-                    instr_text += call_offset->second;
-                    instr_text += "(); }\n";
-                    break;
+                    case nihstro::Instruction::FlowControlType::And:
+                        instr_text += "if (";
+                        instr_text += negate_or_space_x;
+                        instr_text += "cmp.x && ";
+                        instr_text += negate_or_space_y;
+                        instr_text += "cmp.y) { ";
+                        instr_text += call_offset->second;
+                        instr_text += "(); }\n";
+                        break;
 
-                case nihstro::Instruction::FlowControlType::JustX:
-                    instr_text += "if (";
-                    instr_text += negate_or_space_x;
-                    instr_text += "cmp.x) { ";
-                    instr_text += call_offset->second;
-                    instr_text += "(); }\n";
-                    break;
+                    case nihstro::Instruction::FlowControlType::JustX:
+                        instr_text += "if (";
+                        instr_text += negate_or_space_x;
+                        instr_text += "cmp.x) { ";
+                        instr_text += call_offset->second;
+                        instr_text += "(); }\n";
+                        break;
 
-                case nihstro::Instruction::FlowControlType::JustY:
-                    instr_text += "if (";
-                    instr_text += negate_or_space_y;
-                    instr_text += "cmp.y) { ";
-                    instr_text += call_offset->second;
-                    instr_text += "(); }\n";
-                    break;
+                    case nihstro::Instruction::FlowControlType::JustY:
+                        instr_text += "if (";
+                        instr_text += negate_or_space_y;
+                        instr_text += "cmp.y) { ";
+                        instr_text += call_offset->second;
+                        instr_text += "(); }\n";
+                        break;
 
-                default:
-                    instr_text = "// Bad CALLC condition op\n";
-                    break;
+                    default:
+                        instr_text = "// Bad CALLC condition op\n";
+                        break;
+                    }
+                } else {
+                    instr_text = "// CALLC to unknown offset\n";
                 }
             } else {
-                instr_text = "// CALLC to unknown offset\n";
+                instr_text = "// Culled recursive CALLC\n";
             }
 
             break;
@@ -527,15 +539,20 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
         {
         case nihstro::OpCode::Id::CALLU:
         {
-            std::map<u32, std::string>::iterator call_offset = g_fn_offset_map.find(instr.flow_control.dest_offset.Value());
-            if (call_offset != g_fn_offset_map.end()) {
-                instr_text += "if (b[";
-                instr_text += std::to_string(instr.flow_control.bool_uniform_id.Value());
-                instr_text += "]) { ";
-                instr_text += call_offset->second;
-                instr_text += "(); }\n";
+            // Avoid recursive calls (occurs with multiple main()s)
+            if (g_cur_fn_entry != instr.flow_control.dest_offset.Value()) {
+                std::map<u32, std::string>::iterator call_offset = g_fn_offset_map.find(instr.flow_control.dest_offset.Value());
+                if (call_offset != g_fn_offset_map.end()) {
+                    instr_text += "if (b[";
+                    instr_text += std::to_string(instr.flow_control.bool_uniform_id.Value());
+                    instr_text += "]) { ";
+                    instr_text += call_offset->second;
+                    instr_text += "(); }\n";
+                } else {
+                    instr_text = "// CALLU to unknown offset\n";
+                }
             } else {
-                instr_text = "// CALLU to unknown offset\n";
+                instr_text = "// Culled recursive CALLU\n";
             }
 
             break;
@@ -602,18 +619,17 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
     return instr_text;
 }
 
-std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
+std::string PICABinToGLSL(u32 main_offset, const u32* shader_data, const u32* swizzle_data) {
     std::string glsl_shader(g_glsl_shader_header);
 
     int fn_counter = 0;
     int nest_depth = 0;
     bool main_opened = false;
-    bool main_closed = false;
-    u32 main_end_offset = 0;
     bool last_was_nop = false;
 
     g_if_else_offset_list.clear();
     g_fn_offset_map.clear();
+    g_cur_fn_entry = 0;
 
     // First pass: scan for CALLs to determine function offsets
     for (int i = 0; i < 1024; ++i) {
@@ -675,10 +691,19 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
                 glsl_shader += std::string(nest_depth, '\t') + "}\n\n";
             }
 
+            g_cur_fn_entry = i;
+
             glsl_shader += std::string(nest_depth, '\t') + "void " + fn_offset->second + "() {\n";
             nest_depth++;
-        }
-        else if (nest_depth == 0 && !main_opened) {
+        } else if (i == main_offset) {
+            // Hit entry point - get out of nested block if we're in one
+            while (nest_depth > 0) {
+                nest_depth--;
+                glsl_shader += std::string(nest_depth, '\t') + "}\n\n";
+            }
+
+            g_cur_fn_entry = i;
+
             glsl_shader += std::string(nest_depth, '\t') + "void main() {\n";
             nest_depth++;
 
@@ -690,29 +715,13 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
 
         if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::END) {
             if (nest_depth > 0) {
-                main_closed = true;
                 glsl_shader += std::string(nest_depth, '\t') + "gl_Position = vec4(o[0].x, -o[0].y, -o[0].z, o[0].w);\n}// END\n";
                 nest_depth--;
             } else {
                 glsl_shader += "\n";
             }
         } else if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::NOP) {
-            if (!main_opened) {
-                //HACK: treat double-nop as end of function for cave story (since functions are ABOVE main())
-                if (last_was_nop) {
-                    if (nest_depth > 0) {
-                        nest_depth--;
-                        glsl_shader += std::string(nest_depth, '\t') + "}\n\n";
-                    }
-
-                    last_was_nop = false;
-                } else {
-                    glsl_shader += std::string(nest_depth, '\t') + "// NOP\n";
-                    last_was_nop = true;
-                }
-            } else {
-                glsl_shader += std::string(nest_depth, '\t') + "// NOP\n";
-            }
+            glsl_shader += std::string(nest_depth, '\t') + "// NOP\n";
         } else {
             glsl_shader += std::string(nest_depth, '\t') + PICAInstrToGLSL(instr, swizzle_data);
 
@@ -722,19 +731,11 @@ std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data) {
                 nest_depth++;
             }
         }
-
-        if (main_opened && !main_closed) {
-            main_end_offset = glsl_shader.length();
-        }
     }
 
     // Close function if it was last thing
     if (nest_depth > 0) {
         glsl_shader += "}\n";
-    }
-
-    if (!main_closed) {
-        glsl_shader.insert(main_end_offset, "\tgl_Position = vec4(-o[0].y, o[0].x, -o[0].z, o[0].w);\n");
     }
 
     return glsl_shader;

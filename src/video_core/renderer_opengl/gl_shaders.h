@@ -99,7 +99,7 @@ vec4 GetSource(int source) {
         return g_last_tex_env_out;
     }
 
-    return o[out_maps[2]];
+    return vec4(0.0, 0.0, 0.0, 0.0);
 }
 
 vec3 GetColorModifier(int factor, vec4 color) {
@@ -134,7 +134,7 @@ vec3 GetColorModifier(int factor, vec4 color) {
         return vec3(1.0, 1.0, 1.0) - color.bbb;
     }
 
-    return color.rgb;
+    return vec3(0.0, 0.0, 0.0);
 }
 
 float GetAlphaModifier(int factor, vec4 color) {
@@ -163,7 +163,7 @@ float GetAlphaModifier(int factor, vec4 color) {
         return 1.0 - color.b;
     }
 
-    return color.a;
+    return 0.0;
 }
 
 vec3 ColorCombine(int op, vec3 color[3]) {
@@ -192,7 +192,7 @@ vec3 ColorCombine(int op, vec3 color[3]) {
         return min(color[0] + color[1], 1.0) * color[2];
     }
 
-    return color[0];
+    return vec3(0.0, 0.0, 0.0);
 }
 
 float AlphaCombine(int op, float alpha[3]) {
@@ -221,7 +221,7 @@ float AlphaCombine(int op, float alpha[3]) {
         return min(alpha[0] + alpha[1], 1.0) * alpha[2];
     }
 
-    return alpha[0];
+    return 0.0;
 }
 
 void ProcessTexEnv(int tex_env_idx) {

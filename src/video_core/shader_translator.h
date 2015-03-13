@@ -9,4 +9,4 @@
 
 #include <string>
 
-std::string PICABinToGLSL(const u32* shader_data, const u32* swizzle_data);
+std::string PICABinToGLSL(u32 main_offset, const u32* shader_data, const u32* swizzle_data);
