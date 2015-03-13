@@ -594,23 +594,23 @@ void RendererOpenGL::BeginBatch() {
 
     // Uncomment to get shader translator output
     //FILE* outfile = fopen("shaderdecomp.txt", "w");
-    //fwrite(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).length(), 1, outfile);
+    //fwrite(PICABinToGLSL(Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), PICABinToGLSL(Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).length(), 1, outfile);
     //fclose(outfile);
     //exit(0);
     
 #ifdef USE_OGL_VTXSHADER
     // Switch shaders
     // TODO: Should never use g_vertex_shader_hw if using glsl shaders for rendering, but for now just switch every time
-    //if (g_cur_shader_main != Pica::registers.vs_main_offset) {
-        g_cur_shader_main = Pica::registers.vs_main_offset;
+    //if (g_cur_shader_main != Pica::registers.vs_main_offset.Value()) {
+        g_cur_shader_main = Pica::registers.vs_main_offset.Value();
 
-        std::map<u32, GLuint>::iterator cachedShader = g_shader_cache.find(Pica::registers.vs_main_offset);
+        std::map<u32, GLuint>::iterator cachedShader = g_shader_cache.find(Pica::registers.vs_main_offset.Value());
         if (cachedShader != g_shader_cache.end()) {
             g_cur_shader = cachedShader->second;
         } else {
-            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw);
+            g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw);
 
-            g_shader_cache.insert(std::pair<u32, GLuint>(Pica::registers.vs_main_offset, g_cur_shader));
+            g_shader_cache.insert(std::pair<u32, GLuint>(Pica::registers.vs_main_offset.Value(), g_cur_shader));
         }
 
         glUseProgram(g_cur_shader);
