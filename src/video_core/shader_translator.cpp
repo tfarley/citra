@@ -67,22 +67,22 @@ u32 GetRegMaskLen(u32 v)
     return out;
 }
 
-std::string ParseComponentMask(u32 v) {
+std::string ParseComponentMask(u32 v, u32 comp_num) {
     std::string out;
 
     if (v & 0xF) {
         out += ".";
 
-        if (v & (1 << 3)) {
+        if (v & (1 << 3) && (comp_num == 0 || comp_num == 1)) {
             out += "x";
         }
-        if (v & (1 << 2)) {
+        if (v & (1 << 2) && (comp_num == 0 || comp_num == 2)) {
             out += "y";
         }
-        if (v & (1 << 1)) {
+        if (v & (1 << 1) && (comp_num == 0 || comp_num == 3)) {
             out += "z";
         }
-        if (v & 1) {
+        if (v & 1 && (comp_num == 0 || comp_num == 4)) {
             out += "w";
         }
     }
@@ -203,7 +203,7 @@ std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted,
     return (is_negated ? "-" : "") + reg_text + ParseComponentSwizzle(swizzle_data[swizzle_idx], srcidx, clamp_swizzle);
 }
 
-std::string RegTxtDst(u8 v, u32 mask) {
+std::string RegTxtDst(u8 v, u32 mask, u32 comp_num) {
     std::string reg_text;
 
     if (v < 0x10) {
@@ -220,7 +220,7 @@ std::string RegTxtDst(u8 v, u32 mask) {
         reg_text += "]";
     }
 
-    return reg_text + ParseComponentMask(mask);
+    return reg_text + ParseComponentMask(mask, comp_num);
 }
 
 std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data) {
@@ -240,7 +240,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
             instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MOV ||
             instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MOVA;
 
-        std::string dst = RegTxtDst(instr.common.dest.Value(), swizzle_data[instr.common.operand_desc_id.Value()]);
+        std::string dst = RegTxtDst(instr.common.dest.Value(), swizzle_data[instr.common.operand_desc_id.Value()], 0);
         std::string src1 = RegTxtSrc(instr, false, is_inverted, swizzle_data, 0, clamp_swizzle);
         std::string src2 = RegTxtSrc(instr, false, is_inverted, swizzle_data, 1, clamp_swizzle);
 
@@ -260,12 +260,24 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
         case nihstro::OpCode::Id::DP3:
         case nihstro::OpCode::Id::DP4:
         {
-            instr_text += dst;
+            u32 mask_len = GetRegMaskLen(swizzle_data[instr.common.operand_desc_id.Value()]);
+            if (mask_len == 1) {
+                instr_text += dst;
+            } else {
+                for (u32 i = 1; i < mask_len; i++) {
+                    instr_text += RegTxtDst(instr.common.dest.Value(), swizzle_data[instr.common.operand_desc_id.Value()], i);
+                    instr_text += " = ";
+                }
+
+                instr_text += RegTxtDst(instr.common.dest.Value(), swizzle_data[instr.common.operand_desc_id.Value()], mask_len);
+            }
+
             instr_text += " = dot(";
             instr_text += src1;
             instr_text += ", ";
             instr_text += src2;
             instr_text += ");\n";
+
             break;
         }
 
@@ -582,7 +594,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
         }
         }
     } else if (info.type == nihstro::OpCode::Type::MultiplyAdd) {
-        std::string dst = RegTxtDst(instr.mad.dest.Value(), swizzle_data[instr.mad.operand_desc_id.Value()]);
+        std::string dst = RegTxtDst(instr.mad.dest.Value(), swizzle_data[instr.mad.operand_desc_id.Value()], 0);
         std::string src1 = RegTxtSrc(instr, true, false, swizzle_data, 0, true);
         std::string src2 = RegTxtSrc(instr, true, false, swizzle_data, 1, true);
         std::string src3 = RegTxtSrc(instr, true, false, swizzle_data, 2, true);
@@ -711,24 +723,27 @@ std::string PICABinToGLSL(u32 main_offset, const u32* shader_data, const u32* sw
         }
 
         // Translate instruction at current offset
-        nihstro::Instruction instr = ((nihstro::Instruction*)shader_data)[i];
+        // All instructions have to be in main or a function, else we've overrun actual shader data
+        if (nest_depth > 0) {
+            nihstro::Instruction instr = ((nihstro::Instruction*)shader_data)[i];
 
-        if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::END) {
-            if (nest_depth > 0) {
-                glsl_shader += std::string(nest_depth, '\t') + "gl_Position = vec4(o[0].x, -o[0].y, -o[0].z, o[0].w);\n}// END\n";
-                nest_depth--;
+            if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::END) {
+                if (nest_depth > 0) {
+                    glsl_shader += std::string(nest_depth, '\t') + "gl_Position = vec4(o[0].x, -o[0].y, -o[0].z, o[0].w);\n}// END\n";
+                    nest_depth--;
+                } else {
+                    glsl_shader += "\n";
+                }
+            } else if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::NOP) {
+                glsl_shader += std::string(nest_depth, '\t') + "// NOP\n";
             } else {
-                glsl_shader += "\n";
-            }
-        } else if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::NOP) {
-            glsl_shader += std::string(nest_depth, '\t') + "// NOP\n";
-        } else {
-            glsl_shader += std::string(nest_depth, '\t') + PICAInstrToGLSL(instr, swizzle_data);
+                glsl_shader += std::string(nest_depth, '\t') + PICAInstrToGLSL(instr, swizzle_data);
 
-            if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::IFU || instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::IFC) {
-                g_if_else_offset_list.emplace_back(instr.flow_control.dest_offset.Value() - i, instr.flow_control.num_instructions.Value());
+                if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::IFU || instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::IFC) {
+                    g_if_else_offset_list.emplace_back(instr.flow_control.dest_offset.Value() - i, instr.flow_control.num_instructions.Value());
 
-                nest_depth++;
+                    nest_depth++;
+                }
             }
         }
     }
