@@ -299,20 +299,20 @@ void RendererOpenGL::InitOpenGLObjects() {
 }
 
 Math::Vec2<u32> RendererOpenGL::GetDesiredFramebufferSize(TextureInfo& texture,
-															const GPU::Regs::FramebufferConfig& framebuffer) {
-#ifndef USE_OGL_HD
-	return Math::Vec2<u32>(framebuffer.width, framebuffer.height);
-#else
-    auto layout = render_window->GetFramebufferLayout();
-    Math::Vec2<u32> desired_size(layout.height / 2, layout.width);
+            const GPU::Regs::FramebufferConfig& framebuffer) {
+    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+        auto layout = render_window->GetFramebufferLayout();
+        Math::Vec2<u32> desired_size(layout.height / 2, layout.width);
 
-	if (texture.handle != textures[0].handle) {
-        desired_size.x *= ((float)VideoCore::kScreenBottomHeight / (float)VideoCore::kScreenTopHeight);
-		desired_size.y *= ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);
-	}
+        if (texture.handle != textures[0].handle) {
+            desired_size.x *= ((float)VideoCore::kScreenBottomHeight / (float)VideoCore::kScreenTopHeight);
+            desired_size.y *= ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);
+        }
 
-	return desired_size;
-#endif
+        return desired_size;
+    } else {
+        return Math::Vec2<u32>(framebuffer.width, framebuffer.height);
+    }
 }
 
 void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
