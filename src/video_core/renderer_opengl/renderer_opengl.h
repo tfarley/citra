@@ -15,9 +15,7 @@
 
 #include "video_core/renderer_base.h"
 
-#define USE_OGL_RENDERER
 #define USE_OGL_VTXSHADER
-#define USE_OGL_HD
 
 class EmuWindow;
 
