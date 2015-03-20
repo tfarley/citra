@@ -43,7 +43,7 @@ frame_skip =
 
 # The graphics backend to use for rendering
 # SW : Software, OGL : OpenGL
-gfx_backend = SW
+gfx_backend = OGL
 
 [Data Storage]
 # Whether to create a virtual SD card.
