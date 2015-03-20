@@ -2,7 +2,6 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-#include "core/settings.h"
 #include "core/hw/gpu.h"
 #include "core/hw/hw.h"
 #include "core/hw/lcd.h"
@@ -80,13 +79,13 @@ RendererOpenGL::~RendererOpenGL() {
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
-    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
-        if (!g_did_render) {
-            return;
-        }
-
-        g_did_render = 0;
+#ifdef USE_OGL_RENDERER
+    if (!g_did_render) {
+        return;
     }
+
+    g_did_render = 0;
+#endif
 
     render_window->MakeCurrent();
 
@@ -116,15 +115,17 @@ void RendererOpenGL::SwapBuffers() {
                 ConfigureFramebufferTexture(textures[i], framebuffer);
                 ConfigureHWFramebuffer(i);
             }
-            if (!Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0)
-                LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
+#ifndef USE_OGL_RENDERER
+        LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
+#endif
 
             // Resize the texture in case the framebuffer size has changed
             textures[i].width = desired_size.x;
             textures[i].height = desired_size.y;
         }
-        if (!Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0)
-            LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
+#ifndef USE_OGL_RENDERER
+        LoadFBToActiveGLTexture(GPU::g_regs.framebuffer_config[i], textures[i]);
+#endif
     }
 
     glBindVertexArray(vertex_array_handle);
@@ -135,11 +136,11 @@ void RendererOpenGL::SwapBuffers() {
     glBindVertexArray(hw_vertex_array_handle);
     glUseProgram(hw_program_id);
 
-    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
-        // TODO: check if really needed
-        //glFlush();
-        //glFinish();
-    }
+#ifdef USE_OGL_RENDERER
+    // TODO: check if really needed
+    //glFlush();
+    //glFinish();
+#endif
 
     auto& profiler = Common::Profiling::GetProfilingManager();
     profiler.FinishFrame();
@@ -154,12 +155,12 @@ void RendererOpenGL::SwapBuffers() {
 
     profiler.BeginFrame();
 
-    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
-        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[0]);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    }
+#ifdef USE_OGL_RENDERER
+    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[0]);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+#endif
 }
 
 /**
@@ -298,21 +299,21 @@ void RendererOpenGL::InitOpenGLObjects() {
     glGenRenderbuffers(2, hw_framedepthbuffers);
 }
 
-    Math::Vec2<u32> RendererOpenGL::GetDesiredFramebufferSize(TextureInfo& texture,
-            const GPU::Regs::FramebufferConfig& framebuffer) {
-    if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
-        auto layout = render_window->GetFramebufferLayout();
-        Math::Vec2<u32> desired_size(layout.height / 2, layout.width);
+Math::Vec2<u32> RendererOpenGL::GetDesiredFramebufferSize(TextureInfo& texture,
+															const GPU::Regs::FramebufferConfig& framebuffer) {
+#ifndef USE_OGL_HD
+	return Math::Vec2<u32>(framebuffer.width, framebuffer.height);
+#else
+    auto layout = render_window->GetFramebufferLayout();
+    Math::Vec2<u32> desired_size(layout.height / 2, layout.width);
 
-        if (texture.handle != textures[0].handle) {
-            desired_size.x *= ((float)VideoCore::kScreenBottomHeight / (float)VideoCore::kScreenTopHeight);
-            desired_size.y *= ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);
-        }
+	if (texture.handle != textures[0].handle) {
+        desired_size.x *= ((float)VideoCore::kScreenBottomHeight / (float)VideoCore::kScreenTopHeight);
+		desired_size.y *= ((float)VideoCore::kScreenBottomWidth / (float)VideoCore::kScreenTopWidth);
+	}
 
-        return desired_size;
-    } else {
-        return Math::Vec2<u32>(framebuffer.width, framebuffer.height);
-    }
+	return desired_size;
+#endif
 }
 
 void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,

@@ -51,7 +51,6 @@ void Config::ReadValues() {
     qt_config->beginGroup("Core");
     Settings::values.gpu_refresh_rate = qt_config->value("gpu_refresh_rate", 30).toInt();
     Settings::values.frame_skip = qt_config->value("frame_skip", 0).toInt();
-    Settings::values.gfx_backend = qt_config->value("gfx_backend", "SW").toString().toStdString();
     qt_config->endGroup();
 
     qt_config->beginGroup("Data Storage");
@@ -97,7 +96,6 @@ void Config::SaveValues() {
     qt_config->beginGroup("Core");
     qt_config->setValue("gpu_refresh_rate", Settings::values.gpu_refresh_rate);
     qt_config->setValue("frame_skip", Settings::values.frame_skip);
-    qt_config->setValue("gfx_backend", QString::fromStdString(Settings::values.gfx_backend));
     qt_config->endGroup();
 
     qt_config->beginGroup("Data Storage");

@@ -41,10 +41,6 @@ gpu_refresh_rate =
 # 0 (default): No frameskip, 1: x2 frameskip, 2: x4 frameskip, 3: x8 frameskip, etc.
 frame_skip =
 
-# The graphics backend to use for rendering
-# SW : Software, OGL : OpenGL
-gfx_backend = SW
-
 [Data Storage]
 # Whether to create a virtual SD card.
 # 1 (default): Yes, 0: No
