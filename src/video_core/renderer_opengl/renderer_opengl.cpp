@@ -33,8 +33,7 @@ std::vector<RawVertex> g_vertex_batch;
 
 bool g_did_render;
 
-u32 g_first_fb = -1;
-u32 g_last_fb = -1;
+bool g_drawing_bot_screen;
 
 /**
  * Vertex structure that the drawn screen rectangles are composed of.
@@ -163,6 +162,8 @@ void RendererOpenGL::SwapBuffers() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        g_drawing_bot_screen = 0;
     }
 }
 
@@ -734,23 +735,8 @@ void RendererOpenGL::DrawTriangle(const RawVertex& v0, const RawVertex& v1, cons
 void RendererOpenGL::EndBatch() {
     render_window->MakeCurrent();
 
-    u32 cur_fb = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-
-    if (g_first_fb == -1) {
-        // HACK: just keeps first fb addr to differentiate top/bot screens
-        g_first_fb = cur_fb;
-    }
-
-    // TODO: reimplement when actual fb switch can be caught - currently every-frame hack for cave story resolution
-    //if (g_last_fb != cur_fb) {
-        int fbidx = cur_fb != g_first_fb;
-        
-        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[fbidx]);
-        
-        glViewport(0, 0, textures[fbidx].width, textures[fbidx].height);
-
-        g_last_fb = cur_fb;
-    //}
+    glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[g_drawing_bot_screen]);
+    glViewport(0, 0, textures[g_drawing_bot_screen].width, textures[g_drawing_bot_screen].height);
 
     glBindBuffer(GL_ARRAY_BUFFER, hw_vertex_buffer_handle);
     glBufferData(GL_ARRAY_BUFFER, g_vertex_batch.size() * sizeof(RawVertex), g_vertex_batch.data(), GL_STREAM_DRAW);
@@ -795,6 +781,23 @@ void RendererOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
         else {
             ++iter;
         }
+    }
+}
+
+void RendererOpenGL::NotifyPreDisplayTransfer(u32 src, u32 dest)
+{
+    //HACK: Just swap screen target when a framebuffer is committed to an LCD screen's mem
+    if (dest == GPU::g_regs.framebuffer_config[0].address_left1 ||
+        dest == GPU::g_regs.framebuffer_config[0].address_left2 ||
+        dest == GPU::g_regs.framebuffer_config[0].address_right1 ||
+        dest == GPU::g_regs.framebuffer_config[0].address_right2) {
+        g_drawing_bot_screen = 1;
+    }
+    else if (dest == GPU::g_regs.framebuffer_config[1].address_left1 ||
+        dest == GPU::g_regs.framebuffer_config[1].address_left2 ||
+        dest == GPU::g_regs.framebuffer_config[1].address_right1 ||
+        dest == GPU::g_regs.framebuffer_config[1].address_right2) {
+        g_drawing_bot_screen = 0;
     }
 }
 

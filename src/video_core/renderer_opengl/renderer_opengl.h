@@ -55,6 +55,7 @@ public:
     void SetUniformFloats(u32 index, const float* values);
 
     void NotifyFlush(bool is_phys_addr, u32 addr, u32 size);
+    void NotifyPreDisplayTransfer(u32 src, u32 dest);
 
 private:
     /// Structure used for storing information about the textures for each 3DS screen
