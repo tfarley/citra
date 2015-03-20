@@ -133,7 +133,11 @@ void RendererOpenGL::SwapBuffers() {
     DrawScreens();
 
     glBindVertexArray(hw_vertex_array_handle);
+#ifndef USE_OGL_VTXSHADER
     glUseProgram(hw_program_id);
+#else
+    glUseProgram(g_cur_shader);
+#endif
 
     if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
         // TODO: check if really needed
@@ -287,7 +291,9 @@ void RendererOpenGL::InitOpenGLObjects() {
     // Attach vertex data to VAO
     glBindBuffer(GL_ARRAY_BUFFER, hw_vertex_buffer_handle);
 
+#ifndef USE_OGL_VTXSHADER
     glUseProgram(hw_program_id);
+#endif
 
     for (int i = 0; i < 8; i++) {
         glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
@@ -599,8 +605,7 @@ void RendererOpenGL::BeginBatch() {
     
 #ifdef USE_OGL_VTXSHADER
     // Switch shaders
-    // TODO: Should never use g_vertex_shader_hw if using glsl shaders for rendering, but for now just switch every time
-    //if (g_cur_shader_main != Pica::registers.vs_main_offset.Value()) {
+    if (g_cur_shader_main != Pica::registers.vs_main_offset.Value()) {
         g_cur_shader_main = Pica::registers.vs_main_offset.Value();
 
         std::map<u32, GLuint>::iterator cachedShader = g_shader_cache.find(Pica::registers.vs_main_offset.Value());
@@ -636,7 +641,7 @@ void RendererOpenGL::BeginBatch() {
             glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
             glEnableVertexAttribArray(attrib_v + i);
         }
-    //}
+    }
 #endif
 
     for (int i = 0; i < 7; ++i) {
