@@ -597,12 +597,6 @@ void RendererOpenGL::BeginBatch() {
     } else {
         glDisable(GL_BLEND);
     }
-
-    // Uncomment to get shader translator output
-    //FILE* outfile = fopen("shaderdecomp.txt", "w");
-    //fwrite(PICABinToGLSL(Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), PICABinToGLSL(Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).length(), 1, outfile);
-    //fclose(outfile);
-    //exit(0);
     
 #ifdef USE_OGL_VTXSHADER
     // Switch shaders
@@ -614,6 +608,11 @@ void RendererOpenGL::BeginBatch() {
             g_cur_shader = cachedShader->second;
         } else {
             g_cur_shader = ShaderUtil::LoadShaders(PICABinToGLSL(Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), GLShaders::g_fragment_shader_hw);
+
+            // Uncomment to get shader translator output (appends to end of file!)
+            //FILE* outfile = fopen("shaderdecomp.txt", "a");
+            //fwrite(PICABinToGLSL(Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).c_str(), PICABinToGLSL(Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data()).length(), 1, outfile);
+            //fclose(outfile);
 
             g_shader_cache.insert(std::pair<u32, GLuint>(Pica::registers.vs_main_offset.Value(), g_cur_shader));
         }
@@ -845,6 +844,8 @@ void RendererOpenGL::NotifyPreDisplayTransfer(u32 src, u32 dest)
         dest == GPU::g_regs.framebuffer_config[0].address_right1 ||
         dest == GPU::g_regs.framebuffer_config[0].address_right2) {
         g_drawing_bot_screen = 1;
+        glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
     else if (dest == GPU::g_regs.framebuffer_config[1].address_left1 ||
         dest == GPU::g_regs.framebuffer_config[1].address_left2 ||
