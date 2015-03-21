@@ -65,8 +65,8 @@ struct Regs {
 
     INSERT_PADDING_WORDS(0x9);
 
-    BitField<0, 24, u32> viewport_depth_range; // float24
-    BitField<0, 24, u32> viewport_depth_far_plane; // float24
+    BitField<0, 24, u32> viewport_depth_scale; // float24
+    BitField<0, 24, u32> viewport_depth_offset; // float24
 
     INSERT_PADDING_WORDS(0x1);
 
@@ -112,6 +112,7 @@ struct Regs {
     struct TextureConfig {
         enum WrapMode : u32 {
             ClampToEdge    = 0,
+            ClampToBorder  = 1, // TODO: Check if that is right
             Repeat         = 2,
             MirroredRepeat = 3,
         };
@@ -124,6 +125,9 @@ struct Regs {
         };
 
         union {
+            BitField< 0, 1, u32> max_level; // Not sure about this one
+            BitField< 1, 1, u32> mag_filter;
+            BitField< 2, 1, u32> min_filter;
             BitField< 8, 2, WrapMode> wrap_s;
             BitField<12, 2, WrapMode> wrap_t;
         };
@@ -487,7 +491,15 @@ struct Regs {
         }
     } framebuffer;
 
-    INSERT_PADDING_WORDS(0xe0);
+    INSERT_PADDING_WORDS(0xa5);
+
+    u32 frag_lut_sampler;
+
+    INSERT_PADDING_WORDS(0x2);
+
+    u32 frag_lut_param;
+
+    INSERT_PADDING_WORDS(0x37);
 
     struct {
         enum class Format : u64 {
@@ -619,11 +631,14 @@ struct Regs {
     // Number of vertices to render
     u32 num_vertices;
 
-    INSERT_PADDING_WORDS(0x5);
+    u32 geometry_stage_cfg;
+
+    INSERT_PADDING_WORDS(0x4);
 
     // These two trigger rendering of triangles
-    u32 trigger_draw;
-    u32 trigger_draw_indexed;
+
+    u32 draw_arrays;
+    u32 draw_elements;
 
     INSERT_PADDING_WORDS(0x2e);
 
@@ -636,7 +651,17 @@ struct Regs {
 
     BitField<8, 2, TriangleTopology> triangle_topology;
 
-    INSERT_PADDING_WORDS(0x51);
+    INSERT_PADDING_WORDS(0x21);
+
+    BitField<0, 16, u32> gs_bool_uniforms;
+    union {
+        BitField< 0, 8, u32> x;
+        BitField< 8, 8, u32> y;
+        BitField<16, 8, u32> z;
+        BitField<24, 8, u32> w;
+    } gs_int_uniforms[4];
+
+    INSERT_PADDING_WORDS(0x2B);
 
     BitField<0, 16, u32> vs_bool_uniforms;
     union {
@@ -680,7 +705,27 @@ struct Regs {
         }
     } vs_input_register_map;
 
-    INSERT_PADDING_WORDS(0x3);
+    // Toggles the vertex shader units' output registers
+    union {
+        BitField< 0, 1, u32> output0_register;
+        BitField< 1, 1, u32> output1_register;
+        BitField< 2, 1, u32> output2_register;
+        BitField< 3, 1, u32> output3_register;
+        BitField< 4, 1, u32> output4_register;
+        BitField< 5, 1, u32> output5_register;
+        BitField< 6, 1, u32> output6_register;
+        BitField< 7, 1, u32> output7_register;
+        BitField< 8, 1, u32> output8_register;
+        BitField< 9, 1, u32> output9_register;
+        BitField<10, 1, u32> output10_register;
+        BitField<11, 1, u32> output11_register;
+        BitField<12, 1, u32> output12_register;
+        BitField<13, 1, u32> output13_register;
+        BitField<14, 1, u32> output14_register;
+        BitField<15, 1, u32> output15_register;
+    } vs_output_register_map;
+
+    INSERT_PADDING_WORDS(0x2);
 
     struct {
         enum Format : u32
@@ -752,8 +797,8 @@ struct Regs {
         ADD_FIELD(cull_mode);
         ADD_FIELD(viewport_size_x);
         ADD_FIELD(viewport_size_y);
-        ADD_FIELD(viewport_depth_range);
-        ADD_FIELD(viewport_depth_far_plane);
+        ADD_FIELD(viewport_depth_scale);
+        ADD_FIELD(viewport_depth_offset);
         ADD_FIELD(viewport_corner);
         ADD_FIELD(texture0_enable);
         ADD_FIELD(texture0);
@@ -770,16 +815,22 @@ struct Regs {
         ADD_FIELD(tev_stage5);
         ADD_FIELD(output_merger);
         ADD_FIELD(framebuffer);
+        ADD_FIELD(frag_lut_sampler);
+        ADD_FIELD(frag_lut_param);
         ADD_FIELD(vertex_attributes);
         ADD_FIELD(index_array);
         ADD_FIELD(num_vertices);
-        ADD_FIELD(trigger_draw);
-        ADD_FIELD(trigger_draw_indexed);
+        ADD_FIELD(geometry_stage_cfg);
+        ADD_FIELD(draw_arrays);
+        ADD_FIELD(draw_elements);
         ADD_FIELD(triangle_topology);
+        ADD_FIELD(gs_bool_uniforms);
+        ADD_FIELD(gs_int_uniforms);
         ADD_FIELD(vs_bool_uniforms);
         ADD_FIELD(vs_int_uniforms);
         ADD_FIELD(vs_main_offset);
         ADD_FIELD(vs_input_register_map);
+        ADD_FIELD(vs_output_register_map);
         ADD_FIELD(vs_uniform_setup);
         ADD_FIELD(vs_program);
         ADD_FIELD(vs_swizzle_patterns);
@@ -824,8 +875,8 @@ ASSERT_REG_POSITION(trigger_irq, 0x10);
 ASSERT_REG_POSITION(cull_mode, 0x40);
 ASSERT_REG_POSITION(viewport_size_x, 0x41);
 ASSERT_REG_POSITION(viewport_size_y, 0x43);
-ASSERT_REG_POSITION(viewport_depth_range, 0x4d);
-ASSERT_REG_POSITION(viewport_depth_far_plane, 0x4e);
+ASSERT_REG_POSITION(viewport_depth_scale, 0x4d);
+ASSERT_REG_POSITION(viewport_depth_offset, 0x4e);
 ASSERT_REG_POSITION(vs_output_attributes[0], 0x50);
 ASSERT_REG_POSITION(vs_output_attributes[1], 0x51);
 ASSERT_REG_POSITION(viewport_corner, 0x68);
@@ -844,16 +895,22 @@ ASSERT_REG_POSITION(tev_stage4, 0xf0);
 ASSERT_REG_POSITION(tev_stage5, 0xf8);
 ASSERT_REG_POSITION(output_merger, 0x100);
 ASSERT_REG_POSITION(framebuffer, 0x110);
+ASSERT_REG_POSITION(frag_lut_sampler, 0x1c5);
+ASSERT_REG_POSITION(frag_lut_param, 0x1c8);
 ASSERT_REG_POSITION(vertex_attributes, 0x200);
 ASSERT_REG_POSITION(index_array, 0x227);
 ASSERT_REG_POSITION(num_vertices, 0x228);
-ASSERT_REG_POSITION(trigger_draw, 0x22e);
-ASSERT_REG_POSITION(trigger_draw_indexed, 0x22f);
+ASSERT_REG_POSITION(geometry_stage_cfg, 0x229);
+ASSERT_REG_POSITION(draw_arrays, 0x22e);
+ASSERT_REG_POSITION(draw_elements, 0x22f);
 ASSERT_REG_POSITION(triangle_topology, 0x25e);
+ASSERT_REG_POSITION(gs_bool_uniforms, 0x280);
+ASSERT_REG_POSITION(gs_int_uniforms, 0x281);
 ASSERT_REG_POSITION(vs_bool_uniforms, 0x2b0);
 ASSERT_REG_POSITION(vs_int_uniforms, 0x2b1);
 ASSERT_REG_POSITION(vs_main_offset, 0x2ba);
 ASSERT_REG_POSITION(vs_input_register_map, 0x2bb);
+ASSERT_REG_POSITION(vs_output_register_map, 0x2bd);
 ASSERT_REG_POSITION(vs_uniform_setup, 0x2c0);
 ASSERT_REG_POSITION(vs_program, 0x2cb);
 ASSERT_REG_POSITION(vs_swizzle_patterns, 0x2d5);
