@@ -694,11 +694,68 @@ void RendererOpenGL::BeginBatch() {
                 GLuint new_tex_handle;
                 glGenTextures(1, &new_tex_handle);
                 glBindTexture(GL_TEXTURE_2D, new_tex_handle);
+
+            if (cur_texture.config.max_level.Value()) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 1000); // Guess
+            } else {
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, cur_texture.config.wrap_s == Pica::Regs::TextureConfig::WrapMode::ClampToEdge ? GL_CLAMP_TO_EDGE : (cur_texture.config.wrap_s == Pica::Regs::TextureConfig::WrapMode::Repeat ? GL_REPEAT : GL_MIRRORED_REPEAT));
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, cur_texture.config.wrap_t == Pica::Regs::TextureConfig::WrapMode::ClampToEdge ? GL_CLAMP_TO_EDGE : (cur_texture.config.wrap_t == Pica::Regs::TextureConfig::WrapMode::Repeat ? GL_REPEAT : GL_MIRRORED_REPEAT));
+            }
+
+            if (cur_texture.config.mag_filter.Value()) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); // Verified
+            } else {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // Verified
+            }
+
+            if (cur_texture.config.min_filter.Value()) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // Could be either be GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_NEAREST, or GL_LINEAR
+            } else {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); // Could be either be GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_NEAREST, or GL_LINEAR
+            }
+
+            switch (cur_texture.config.wrap_s.Value()) {
+            case Pica::Regs::TextureConfig::WrapMode::ClampToEdge:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                break;
+
+            case Pica::Regs::TextureConfig::WrapMode::ClampToBorder:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER); // This seems to be a logical guess
+                break;
+
+            case Pica::Regs::TextureConfig::WrapMode::Repeat:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                break;
+
+            case Pica::Regs::TextureConfig::WrapMode::MirroredRepeat:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+                break;
+
+            default:
+                LOG_ERROR(Render_OpenGL, "Unknown wrap_s mode %d", (cur_texture.config.wrap_s.Value()));
+                break;
+            }
+
+            switch (cur_texture.config.wrap_t.Value()) {
+            case Pica::Regs::TextureConfig::WrapMode::ClampToEdge:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                break;
+
+            case Pica::Regs::TextureConfig::WrapMode::ClampToBorder:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER); // This seems to be a logical guess
+                break;
+
+            case Pica::Regs::TextureConfig::WrapMode::Repeat:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                break;
+
+            case Pica::Regs::TextureConfig::WrapMode::MirroredRepeat:
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+                break;
+
+            default:
+                LOG_ERROR(Render_OpenGL, "Unknown wrap_t mode %d", (cur_texture.config.wrap_t.Value()));
+                break;
+            }
 
                 Math::Vec4<u8>* rgba_tex = new Math::Vec4<u8>[cur_texture.config.width * cur_texture.config.height];
 
