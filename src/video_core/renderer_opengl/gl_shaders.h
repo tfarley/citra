@@ -48,11 +48,24 @@ const char g_vertex_shader_hw[] = R"(
 in vec4 v[8];
 out vec4 o[7];
 
-uniform int out_maps[7];
+uniform int out_maps[7*4];
+
+void SetVal(int map_idx, float val) {
+    o[out_maps[map_idx] / 4][out_maps[map_idx] % 4] = val;
+}
 
 void main() {
-    o[out_maps[2]] = v[1];
-    o[out_maps[3]] = v[2];
+    SetVal(8, v[1].x);
+    SetVal(9, v[1].y);
+    SetVal(10, v[1].z);
+    SetVal(11, v[1].w);
+    SetVal(12, v[2].x);
+    SetVal(13, v[2].y);
+
+    // TODO: These are wrong/broken
+    SetVal(14, v[3].x);
+    SetVal(15, v[3].y);
+
     gl_Position = v[0];
 }
 )";
@@ -68,26 +81,32 @@ uniform float alphatest_ref;
 
 uniform sampler2D tex[3];
 uniform ivec4 tevs[6];
-uniform int out_maps[7];
+uniform int out_maps[7*4];
 
 vec4 g_last_tex_env_out;
 vec4 g_const_color;
 
+float GetVal(int map_idx) {
+    return o[out_maps[map_idx] / 4][out_maps[map_idx] % 4];
+}
+
 vec4 GetSource(int source) {
     if (source == 0) {
-        return o[out_maps[2]];
+        // HACK: Should use values 8/9/10/11 but hurts framerate
+        return o[out_maps[8] / 4];
     }
     else if (source == 1) {
-        return o[out_maps[2]];
+        return o[out_maps[8] / 4];
     }
     else if (source == 3) {
-        return texture(tex[0], o[out_maps[3]].xy);
+        return texture(tex[0], vec2(GetVal(12), GetVal(13)));
     }
     else if (source == 4) {
-        return texture(tex[1], o[out_maps[3]].xy);
+        return texture(tex[1], vec2(GetVal(14), GetVal(15)));
     }
     else if (source == 5) {
-        return texture(tex[2], o[out_maps[3]].xy);
+        // TODO: Unverified
+        return texture(tex[2], vec2(GetVal(16), GetVal(17)));
     }
     else if (source == 6) {
         // TODO: no 4th texture?

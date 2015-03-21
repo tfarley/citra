@@ -653,14 +653,10 @@ void RendererOpenGL::BeginBatch() {
             output_register_map.map_z.Value(), output_register_map.map_w.Value()
         };
 
-        // TODO: actually assign each component semantics, not just whole-vec4's
-        // Also might only need to do this once per shader?
-        if (output_register_map.map_x.Value() % 4 == 0) {
-            glUniform1i(uniform_out_maps + output_register_map.map_x.Value() / 4, i);
+        // TODO: Might only need to do this once per shader?
+        for (int comp = 0; comp < 4; ++comp) {
+            glUniform1i(uniform_out_maps + semantics[comp], 4 * i + comp);
         }
-
-        //for (int comp = 0; comp < 4; ++comp)
-        //    state.output_register_table[4 * i + comp] = ((float24*)&ret) + semantics[comp];
     }
 
     auto tev_stages = Pica::registers.GetTevStages();
