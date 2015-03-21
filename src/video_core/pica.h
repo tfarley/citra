@@ -98,9 +98,9 @@ struct Regs {
         BitField< 8, 5, Semantic> map_y;
         BitField<16, 5, Semantic> map_z;
         BitField<24, 5, Semantic> map_w;
-    } vs_output_attributes[7];
+    } vs_output_attributes[16];
 
-    INSERT_PADDING_WORDS(0x11);
+    INSERT_PADDING_WORDS(0x8);
 
     union {
         BitField< 0, 16, u32> x;

@@ -22,7 +22,7 @@ class EmuWindow;
 struct RawVertex {
     RawVertex() = default;
 
-    float attribs[8][4];
+    float attribs[16][4];
 };
 
 class RendererOpenGL : public RendererBase {

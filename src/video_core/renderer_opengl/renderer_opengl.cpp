@@ -296,8 +296,8 @@ void RendererOpenGL::InitOpenGLObjects() {
     glUseProgram(hw_program_id);
 #endif
 
-    for (int i = 0; i < 8; i++) {
-        glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
+    for (int i = 0; i < 16; i++) {
+        glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, sizeof(RawVertex), (GLvoid*)(i * 4 * sizeof(float)));
         glEnableVertexAttribArray(attrib_v + i);
     }
 
@@ -638,14 +638,14 @@ void RendererOpenGL::BeginBatch() {
         glUniform1i(uniform_tex + 1, 1);
         glUniform1i(uniform_tex + 2, 2);
 
-        for (int i = 0; i < 8; i++) {
-            glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, 8 * 4 * sizeof(float), (GLvoid*)(i * 4 * sizeof(float)));
+        for (int i = 0; i < 16; i++) {
+            glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, sizeof(RawVertex), (GLvoid*)(i * 4 * sizeof(float)));
             glEnableVertexAttribArray(attrib_v + i);
         }
     }
 #endif
 
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < 16; ++i) {
         const auto& output_register_map = Pica::registers.vs_output_attributes[i];
 
         u32 semantics[4] = {

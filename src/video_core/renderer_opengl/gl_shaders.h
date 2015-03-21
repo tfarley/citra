@@ -45,10 +45,10 @@ void main() {
 const char g_vertex_shader_hw[] = R"(
 #version 150 core
 
-in vec4 v[8];
-out vec4 o[7];
+in vec4 v[16];
+out vec4 o[16];
 
-uniform int out_maps[7*4];
+uniform int out_maps[16*4];
 
 void SetVal(int map_idx, float val) {
     o[out_maps[map_idx] / 4][out_maps[map_idx] % 4] = val;
@@ -73,7 +73,7 @@ void main() {
 const char g_fragment_shader_hw[] = R"(
 #version 150 core
 
-in vec4 o[7];
+in vec4 o[16];
 out vec4 color;
 
 uniform int alphatest_func;
@@ -81,7 +81,7 @@ uniform float alphatest_ref;
 
 uniform sampler2D tex[3];
 uniform ivec4 tevs[6];
-uniform int out_maps[7*4];
+uniform int out_maps[16*4];
 
 vec4 g_last_tex_env_out;
 vec4 g_const_color;

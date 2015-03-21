@@ -14,16 +14,17 @@
 
 const char g_glsl_shader_header[] = R"(#version 150
 
-in vec4 v[8];
+in vec4 v[16];
 
-out vec4 o[7];
+out vec4 o[16];
 
 uniform vec4 c[96];
-uniform bool b[11];
+uniform bool b[16];
 uniform int i[4];
+uniform int aL;
 
 vec4 r[16];
-ivec4 idx;
+ivec2 idx;
 bvec2 cmp;
 
 )";
