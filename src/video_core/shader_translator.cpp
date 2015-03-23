@@ -317,9 +317,9 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
 
         case nihstro::OpCode::Id::RCP:
         {
-            instr_text += "if (";
+            instr_text += "if (length(";
             instr_text += src1;
-            instr_text += ".x > 0.0000001) {";
+            instr_text += ") > 0.0000001) {";
             instr_text += dst;
             instr_text += " = 1 / ";
             instr_text += src1;
@@ -329,9 +329,9 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
 
         case nihstro::OpCode::Id::RSQ:
         {
-            instr_text += "if (";
+            instr_text += "if (length(";
             instr_text += src1;
-            instr_text += ".x > 0.0000001) {";
+            instr_text += ") > 0.0000001) {";
             instr_text += dst;
             instr_text += " = inversesqrt(";
             instr_text += src1;
