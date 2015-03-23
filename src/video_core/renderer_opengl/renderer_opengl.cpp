@@ -538,6 +538,13 @@ void RendererOpenGL::BeginBatch() {
         glDisable(GL_DEPTH_TEST);
     }
 
+    // Needs to be done here, before the depth test functions
+    if (Pica::registers.output_merger.depth_write_enable.Value()) {
+        glDepthMask(GL_TRUE);
+    } else {
+        glDepthMask(GL_FALSE);
+    }
+
     switch (Pica::registers.output_merger.depth_test_func.Value()) {
     case Pica::registers.output_merger.Never:
         glDepthFunc(GL_NEVER);
@@ -575,13 +582,6 @@ void RendererOpenGL::BeginBatch() {
         LOG_ERROR(Render_OpenGL, "Unknown depth test function %d", Pica::registers.output_merger.depth_test_func.Value());
         break;
     }
-
-    // TODO: messes everything up
-    //if (Pica::registers.output_merger.depth_write_enable.Value()) {
-    //    glDepthMask(GL_TRUE);
-    //} else {
-    //    glDepthMask(GL_FALSE);
-    //}
 
     if (Pica::registers.output_merger.alphablend_enable.Value()) {
         glEnable(GL_BLEND);
