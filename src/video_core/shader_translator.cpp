@@ -720,6 +720,25 @@ std::string PICABinToGLSL(u32 main_offset, const u32* shader_data, const u32* sw
             glsl_shader += std::string(nest_depth, '\t') + "void main() {\n";
             nest_depth++;
 
+            glsl_shader += std::string(nest_depth, '\t') + "r[0] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[1] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[2] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[3] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[4] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[5] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[6] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[7] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[8] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[9] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[10] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[11] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[12] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[13] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[14] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "r[15] = vec4(0.0, 0.0, 0.0, 0.0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "idx = ivec2(0, 0);\n";
+            glsl_shader += std::string(nest_depth, '\t') + "cmp = bvec2(false, false);\n";
+
             main_opened = true;
         }
 
