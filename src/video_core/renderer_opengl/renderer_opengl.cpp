@@ -158,6 +158,7 @@ void RendererOpenGL::SwapBuffers() {
     profiler.BeginFrame();
 
     if (Settings::values.gfx_backend.substr(0, Settings::values.gfx_backend.find_first_of(" #")).compare("OGL") == 0) {
+        glDepthMask(GL_TRUE);
         glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[0]);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
@@ -576,12 +577,11 @@ void RendererOpenGL::BeginBatch() {
         break;
     }
 
-    // TODO: messes everything up
-    //if (Pica::registers.output_merger.depth_write_enable.Value()) {
-    //    glDepthMask(GL_TRUE);
-    //} else {
-    //    glDepthMask(GL_FALSE);
-    //}
+    if (Pica::registers.output_merger.depth_write_enable.Value()) {
+        glDepthMask(GL_TRUE);
+    } else {
+        glDepthMask(GL_FALSE);
+    }
 
     if (Pica::registers.output_merger.alphablend_enable.Value()) {
         glEnable(GL_BLEND);
@@ -845,6 +845,7 @@ void RendererOpenGL::NotifyPreDisplayTransfer(u32 src, u32 dest)
         dest == GPU::g_regs.framebuffer_config[0].address_right2) {
         g_drawing_bot_screen = 1;
         glBindFramebuffer(GL_FRAMEBUFFER, hw_framebuffers[1]);
+        glDepthMask(GL_TRUE);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
     else if (dest == GPU::g_regs.framebuffer_config[1].address_left1 ||
