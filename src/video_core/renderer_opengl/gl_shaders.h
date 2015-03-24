@@ -80,7 +80,20 @@ uniform int alphatest_func;
 uniform float alphatest_ref;
 
 uniform sampler2D tex[3];
-uniform ivec4 tevs[6];
+
+struct TEV
+{
+    ivec3 color_src;
+    ivec3 alpha_src;
+    ivec3 color_mod;
+    ivec3 alpha_mod;
+    int color_op;
+    int alpha_op;
+    vec4 const_color;
+};
+
+uniform TEV tevs[6];
+
 uniform int out_maps[16*4];
 
 vec4 g_last_tex_env_out;
@@ -93,10 +106,10 @@ float GetVal(int map_idx) {
 vec4 GetSource(int source) {
     if (source == 0) {
         // HACK: Should use values 8/9/10/11 but hurts framerate
-        return o[out_maps[8] / 4];
+        return o[out_maps[8] >> 2];
     }
     else if (source == 1) {
-        return o[out_maps[8] / 4];
+        return o[out_maps[8] >> 2];
     }
     else if (source == 3) {
         return texture(tex[0], vec2(GetVal(12), GetVal(13)));
@@ -244,44 +257,17 @@ float AlphaCombine(int op, float alpha[3]) {
 }
 
 void ProcessTexEnv(int tex_env_idx) {
-    // x = int sources;
-    // y = int modifiers;
-    // z = int ops;
-    // w = int const_col;
+    g_const_color = tevs[tex_env_idx].const_color;
 
-    int color_source1 = tevs[tex_env_idx].x & 0xF;
-    int color_source2 = (tevs[tex_env_idx].x >> 4) & 0xF;
-    int color_source3 = (tevs[tex_env_idx].x >> 8) & 0xF;
-    int alpha_source1 = (tevs[tex_env_idx].x >> 16) & 0xF;
-    int alpha_source2 = (tevs[tex_env_idx].x >> 20) & 0xF;
-    int alpha_source3 = (tevs[tex_env_idx].x >> 24) & 0xF;
+    vec3 color_results[3] = vec3[3](GetColorModifier(tevs[tex_env_idx].color_mod.x, GetSource(tevs[tex_env_idx].color_src.x)),
+                                    GetColorModifier(tevs[tex_env_idx].color_mod.y, GetSource(tevs[tex_env_idx].color_src.y)),
+                                    GetColorModifier(tevs[tex_env_idx].color_mod.z, GetSource(tevs[tex_env_idx].color_src.z)));
+    vec3 color_output = ColorCombine(tevs[tex_env_idx].color_op, color_results);
 
-    int color_modifier1 = tevs[tex_env_idx].y & 0xF;
-    int color_modifier2 = (tevs[tex_env_idx].y >> 4) & 0xF;
-    int color_modifier3 = (tevs[tex_env_idx].y >> 8) & 0xF;
-    int alpha_modifier1 = (tevs[tex_env_idx].y >> 12) & 0xF;
-    int alpha_modifier2 = (tevs[tex_env_idx].y >> 16) & 0xF;
-    int alpha_modifier3 = (tevs[tex_env_idx].y >> 20) & 0xF;
-
-    int color_op = tevs[tex_env_idx].z & 0xF;
-    int alpha_op = (tevs[tex_env_idx].z >> 16) & 0xF;
-
-    float const_r = (tevs[tex_env_idx].w & 0xFF) / 255.0;
-    float const_g = ((tevs[tex_env_idx].w >> 8) & 0xFF) / 255.0;
-    float const_b = ((tevs[tex_env_idx].w >> 16) & 0xFF) / 255.0;
-    float const_a = ((tevs[tex_env_idx].w >> 24) & 0xFF) / 255.0;
-
-    g_const_color = vec4(const_r, const_g, const_b, const_a);
-
-    vec3 color_results[3] = vec3[3](GetColorModifier(color_modifier1, GetSource(color_source1)),
-                                    GetColorModifier(color_modifier2, GetSource(color_source2)),
-                                    GetColorModifier(color_modifier3, GetSource(color_source3)));
-    vec3 color_output = ColorCombine(color_op, color_results);
-
-    float alpha_results[3] = float[3](GetAlphaModifier(alpha_modifier1, GetSource(alpha_source1)),
-                                      GetAlphaModifier(alpha_modifier2, GetSource(alpha_source2)),
-                                      GetAlphaModifier(alpha_modifier3, GetSource(alpha_source3)));
-    float alpha_output = AlphaCombine(alpha_op, alpha_results);
+    float alpha_results[3] = float[3](GetAlphaModifier(tevs[tex_env_idx].alpha_mod.x, GetSource(tevs[tex_env_idx].alpha_src.x)),
+                                      GetAlphaModifier(tevs[tex_env_idx].alpha_mod.y, GetSource(tevs[tex_env_idx].alpha_src.y)),
+                                      GetAlphaModifier(tevs[tex_env_idx].alpha_mod.z, GetSource(tevs[tex_env_idx].alpha_src.z)));
+    float alpha_output = AlphaCombine(tevs[tex_env_idx].alpha_op, alpha_results);
 
     g_last_tex_env_out = vec4(color_output, alpha_output);
 }

@@ -68,6 +68,16 @@ private:
         GLenum gl_type;
     };
 
+    struct TEVUniforms {
+        GLuint color_src;
+        GLuint alpha_src;
+        GLuint color_mod;
+        GLuint alpha_mod;
+        GLuint color_op;
+        GLuint alpha_op;
+        GLuint const_color;
+    };
+
     void InitOpenGLObjects();
 	Math::Vec2<u32> GetDesiredFramebufferSize(TextureInfo& texture,
 												const GPU::Regs::FramebufferConfig& framebuffer);
@@ -120,7 +130,7 @@ private:
     GLuint uniform_alphatest_func;
     GLuint uniform_alphatest_ref;
     GLuint uniform_tex;
-    GLuint uniform_tevs;
+    TEVUniforms uniform_tevs[6];
     GLuint uniform_out_maps;
     GLuint uniform_tex_envs;
 };
