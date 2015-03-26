@@ -59,6 +59,11 @@ void Config::ReadValues() {
     Settings::values.bg_blue  = qt_config->value("bg_blue",  1.0).toFloat();
     qt_config->endGroup();
 
+    qt_config->beginGroup("Graphics");
+    Settings::values.gfx_use_hw_renderer = qt_config->value("gfx_use_hw_renderer", false).toBool();
+    Settings::values.gfx_use_hw_shaders = qt_config->value("gfx_use_hw_shaders", false).toBool();
+    qt_config->endGroup();
+
     qt_config->beginGroup("Data Storage");
     Settings::values.use_virtual_sd = qt_config->value("use_virtual_sd", true).toBool();
     qt_config->endGroup();
@@ -109,6 +114,11 @@ void Config::SaveValues() {
     qt_config->setValue("bg_red",   (double)Settings::values.bg_red);
     qt_config->setValue("bg_green", (double)Settings::values.bg_green);
     qt_config->setValue("bg_blue",  (double)Settings::values.bg_blue);
+    qt_config->endGroup();
+
+    qt_config->beginGroup("Graphics");
+    qt_config->setValue("gfx_use_hw_renderer", Settings::values.gfx_use_hw_renderer);
+    qt_config->setValue("gfx_use_hw_shaders", Settings::values.gfx_use_hw_shaders);
     qt_config->endGroup();
 
     qt_config->beginGroup("Data Storage");

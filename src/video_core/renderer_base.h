@@ -37,6 +37,15 @@ public:
     /// Shutdown the renderer
     virtual void ShutDown() = 0;
 
+    /// Draw a batch of triangles
+    virtual void DrawBatch(bool is_indexed) = 0;
+
+    /// Notify renderer that memory region has been changed
+    virtual void NotifyFlush(bool is_phys_addr, u32 addr, u32 size) = 0;
+
+    /// Notify renderer that a display transfer is about to happen
+    virtual void NotifyPreDisplayTransfer(u32 src_addr, u32 dest_addr) = 0;
+
     // Getter/setter functions:
     // ------------------------
 

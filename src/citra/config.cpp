@@ -71,6 +71,10 @@ void Config::ReadValues() {
     Settings::values.bg_green = (float)glfw_config->GetReal("Renderer", "bg_green", 1.0);
     Settings::values.bg_blue  = (float)glfw_config->GetReal("Renderer", "bg_blue",  1.0);
 
+    // Graphics
+    Settings::values.gfx_use_hw_renderer = glfw_config->GetBoolean("Graphics", "gfx_use_hw_renderer", false);
+    Settings::values.gfx_use_hw_shaders = glfw_config->GetBoolean("Graphics", "gfx_use_hw_shaders", false);
+
     // Data Storage
     Settings::values.use_virtual_sd = glfw_config->GetBoolean("Data Storage", "use_virtual_sd", true);
 

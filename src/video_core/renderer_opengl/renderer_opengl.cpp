@@ -11,9 +11,11 @@
 #include "common/emu_window.h"
 #include "common/profiler_reporting.h"
 
+#include "video_core/clipper.h"
+#include "video_core/vertex_processor.h"
 #include "video_core/video_core.h"
 #include "video_core/renderer_opengl/renderer_opengl.h"
-#include "video_core/renderer_opengl/gl_shader_util.h"
+#include "video_core/renderer_opengl/gl_rasterizer.h"
 #include "video_core/renderer_opengl/gl_shaders.h"
 
 #include <algorithm>
@@ -51,18 +53,28 @@ static std::array<GLfloat, 3*2> MakeOrthographicMatrix(const float width, const 
 }
 
 /// RendererOpenGL constructor
-RendererOpenGL::RendererOpenGL() {
+RendererOpenGL::RendererOpenGL() : hw_rasterizer(nullptr) {
     resolution_width  = std::max(VideoCore::kScreenTopWidth, VideoCore::kScreenBottomWidth);
     resolution_height = VideoCore::kScreenTopHeight + VideoCore::kScreenBottomHeight;
 }
 
 /// RendererOpenGL destructor
 RendererOpenGL::~RendererOpenGL() {
+    if (hw_rasterizer != nullptr) {
+        delete hw_rasterizer;
+    }
 }
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
     render_window->MakeCurrent();
+
+    if (hw_rasterizer != nullptr) {
+        hw_rasterizer->NotifySwapBuffers();
+    }
+
+    glBindVertexArray(vertex_array_handle);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     for(int i : {0, 1}) {
         const auto& framebuffer = GPU::g_regs.framebuffer_config[i];
@@ -108,6 +120,19 @@ void RendererOpenGL::SwapBuffers() {
     // Swap buffers
     render_window->PollEvents();
     render_window->SwapBuffers();
+
+    // If switched to/from hw renderer, create/delete hw rasterizer
+    if (hw_rasterizer == nullptr)
+    {
+        if (Settings::values.gfx_use_hw_renderer) {
+            hw_rasterizer = new RasterizerOpenGL(&res_mgr);
+        }
+    } else {
+        if (!Settings::values.gfx_use_hw_renderer) {
+            delete hw_rasterizer;
+            hw_rasterizer = nullptr;
+        }
+    }
 
     profiler.BeginFrame();
 }
@@ -177,17 +202,17 @@ void RendererOpenGL::InitOpenGLObjects() {
     glDisable(GL_DEPTH_TEST);
 
     // Link shaders and get variable locations
-    program_id = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader, GLShaders::g_fragment_shader);
+    program_id = res_mgr.NewShader(GLShaders::g_vertex_shader, GLShaders::g_fragment_shader);
     uniform_modelview_matrix = glGetUniformLocation(program_id, "modelview_matrix");
     uniform_color_texture = glGetUniformLocation(program_id, "color_texture");
     attrib_position = glGetAttribLocation(program_id, "vert_position");
     attrib_tex_coord = glGetAttribLocation(program_id, "vert_tex_coord");
 
     // Generate VBO handle for drawing
-    glGenBuffers(1, &vertex_buffer_handle);
+    vertex_buffer_handle = res_mgr.NewBuffer();
 
     // Generate VAO
-    glGenVertexArrays(1, &vertex_array_handle);
+    vertex_array_handle = res_mgr.NewVAO();
     glBindVertexArray(vertex_array_handle);
 
     // Attach vertex data to VAO
@@ -200,7 +225,7 @@ void RendererOpenGL::InitOpenGLObjects() {
 
     // Allocate textures for each screen
     for (auto& texture : textures) {
-        glGenTextures(1, &texture.handle);
+        texture.handle = res_mgr.NewTexture();
 
         // Allocation of storage is deferred until the first frame, when we
         // know the framebuffer size.
@@ -213,6 +238,10 @@ void RendererOpenGL::InitOpenGLObjects() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     glBindTexture(GL_TEXTURE_2D, 0);
+
+    if (Settings::values.gfx_use_hw_renderer) {
+        hw_rasterizer = new RasterizerOpenGL(&res_mgr);
+    }
 }
 
 void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
@@ -341,4 +370,34 @@ void RendererOpenGL::Init() {
 
 /// Shutdown the renderer
 void RendererOpenGL::ShutDown() {
+}
+
+/// Notify renderer that memory region has been changed
+void RendererOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
+    if (hw_rasterizer != nullptr) {
+        render_window->MakeCurrent();
+
+        hw_rasterizer->NotifyFlush(is_phys_addr, addr, size);
+    }
+}
+
+/// Notify renderer that a display transfer is about to happen
+void RendererOpenGL::NotifyPreDisplayTransfer(u32 src_addr, u32 dest_addr) {
+    if (hw_rasterizer != nullptr) {
+        render_window->MakeCurrent();
+
+        // TODO: Should only need to do this if transfer intersects current framebuffer
+        hw_rasterizer->CommitFramebuffer();
+    }
+}
+
+/// Draw a batch of triangles
+void RendererOpenGL::DrawBatch(bool is_indexed) {
+    if (hw_rasterizer == nullptr) {
+        Pica::VertexProcessor::ProcessBatch(is_indexed, Pica::Clipper::ProcessTriangle);
+    } else {
+        render_window->MakeCurrent();
+        // TODO: how to resize + render directly to screen textures and make it stop loading from mem if HD? probably have to do in here!
+        hw_rasterizer->DrawBatch(is_indexed);
+    }
 }

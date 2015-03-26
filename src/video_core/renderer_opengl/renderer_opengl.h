@@ -13,6 +13,10 @@
 #include "core/hw/gpu.h"
 
 #include "video_core/renderer_base.h"
+#include "video_core/vertex_shader.h"
+
+#include "gl_resource_manager.h"
+#include "gl_rasterizer.h"
 
 class EmuWindow;
 
@@ -36,6 +40,15 @@ public:
 
     /// Shutdown the renderer
     void ShutDown() override;
+
+    /// Draw a batch of triangles
+    void DrawBatch(bool is_indexed) override;
+
+    /// Notify renderer that memory region has been changed
+    void NotifyFlush(bool is_phys_addr, u32 addr, u32 size) override;
+
+    /// Notify renderer that a display transfer is about to happen
+    void NotifyPreDisplayTransfer(u32 src_addr, u32 dest_addr) override;
 
 private:
     /// Structure used for storing information about the textures for each 3DS screen
@@ -64,6 +77,12 @@ private:
 
     /// Computes the viewport rectangle
     MathUtil::Rectangle<unsigned> GetViewportExtent();
+
+    /// Set OpenGL state to correspond to PICA register states
+    void SetupDrawState();
+
+    ResourceManagerOpenGL res_mgr;
+    RasterizerOpenGL* hw_rasterizer;
 
     EmuWindow*  render_window;                    ///< Handle to render window
     u32         last_mode;                        ///< Last render mode

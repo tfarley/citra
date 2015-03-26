@@ -38,6 +38,10 @@ struct Values {
     int gpu_refresh_rate;
     int frame_skip;
 
+    // Graphics
+    bool gfx_use_hw_renderer;
+    bool gfx_use_hw_shaders;
+
     // Data Storage
     bool use_virtual_sd;
 
