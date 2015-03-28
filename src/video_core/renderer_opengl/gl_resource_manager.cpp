@@ -1,4 +1,4 @@
-// Copyright 2014 Citra Emulator Project
+// Copyright 2015 Citra Emulator Project
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
@@ -36,36 +36,32 @@ GLuint ResourceManagerOpenGL::NewTexture() {
     GLuint new_handle;
     glGenTextures(1, &new_handle);
 
-    texture_handles.push_back(new_handle);
+    texture_handles.insert(new_handle);
 
     return new_handle;
 }
 
 void ResourceManagerOpenGL::DeleteTexture(GLuint handle) {
-    for (auto it = texture_handles.begin(); it != texture_handles.end(); ++it) {
-        if (*it == handle) {
-            glDeleteTextures(1, &(*it));
-            texture_handles.erase(it);
-            break;
-        }
+    auto it = texture_handles.find(handle);
+    if (it != texture_handles.end()) {
+        glDeleteTextures(1, &handle);
+        texture_handles.erase(it);
     }
 }
 
 GLuint ResourceManagerOpenGL::NewShader(const char *vert_shader, const char *frag_shader) {
     GLuint new_handle = ShaderUtil::LoadShaders(vert_shader, frag_shader);
 
-    shader_handles.push_back(new_handle);
+    shader_handles.insert(new_handle);
 
     return new_handle;
 }
 
 void ResourceManagerOpenGL::DeleteShader(GLuint handle) {
-    for (auto it = shader_handles.begin(); it != shader_handles.end(); ++it) {
-        if (*it == handle) {
-            glDeleteProgram(*it);
-            shader_handles.erase(it);
-            break;
-        }
+    auto it = shader_handles.find(handle);
+    if (it != shader_handles.end()) {
+        glDeleteProgram(handle);
+        shader_handles.erase(it);
     }
 }
 
@@ -73,18 +69,16 @@ GLuint ResourceManagerOpenGL::NewBuffer() {
     GLuint new_handle;
     glGenBuffers(1, &new_handle);
 
-    buffer_handles.push_back(new_handle);
+    buffer_handles.insert(new_handle);
 
     return new_handle;
 }
 
 void ResourceManagerOpenGL::DeleteBuffer(GLuint handle) {
-    for (auto it = buffer_handles.begin(); it != buffer_handles.end(); ++it) {
-        if (*it == handle) {
-            glDeleteBuffers(1, &(*it));
-            buffer_handles.erase(it);
-            break;
-        }
+    auto it = buffer_handles.find(handle);
+    if (it != buffer_handles.end()) {
+        glDeleteBuffers(1, &handle);
+        buffer_handles.erase(it);
     }
 }
 
@@ -92,18 +86,16 @@ GLuint ResourceManagerOpenGL::NewVAO() {
     GLuint new_handle;
     glGenVertexArrays(1, &new_handle);
 
-    vao_handles.push_back(new_handle);
+    vao_handles.insert(new_handle);
 
     return new_handle;
 }
 
 void ResourceManagerOpenGL::DeleteVAO(GLuint handle) {
-    for (auto it = vao_handles.begin(); it != vao_handles.end(); ++it) {
-        if (*it == handle) {
-            glDeleteVertexArrays(1, &(*it));
-            vao_handles.erase(it);
-            break;
-        }
+    auto it = vao_handles.find(handle);
+    if (it != vao_handles.end()) {
+        glDeleteVertexArrays(1, &handle);
+        vao_handles.erase(it);
     }
 }
 
@@ -111,17 +103,15 @@ GLuint ResourceManagerOpenGL::NewFramebuffer() {
     GLuint new_handle;
     glGenFramebuffers(1, &new_handle);
 
-    framebuffer_handles.push_back(new_handle);
+    framebuffer_handles.insert(new_handle);
 
     return new_handle;
 }
 
 void ResourceManagerOpenGL::DeleteFramebuffer(GLuint handle) {
-    for (auto it = framebuffer_handles.begin(); it != framebuffer_handles.end(); ++it) {
-        if (*it == handle) {
-            glDeleteFramebuffers(1, &(*it));
-            framebuffer_handles.erase(it);
-            break;
-        }
+    auto it = framebuffer_handles.find(handle);
+    if (it != framebuffer_handles.end()) {
+        glDeleteFramebuffers(1, &handle);
+        framebuffer_handles.erase(it);
     }
 }

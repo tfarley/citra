@@ -1,4 +1,4 @@
-// Copyright 2014 Citra Emulator Project
+// Copyright 2015 Citra Emulator Project
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
@@ -15,8 +15,8 @@
 #include "generated/gl_3_2_core.h"
 
 /**
-* Vertex structure that the hardware rendered vertices are composed of.
-*/
+ * Vertex structure that the hardware rendered vertices are composed of.
+ */
 struct HardwareVertex {
     HardwareVertex(const Pica::VertexShader::OutputVertex& v) {
         position[0] = v.pos.x.ToFloat32();
@@ -45,8 +45,10 @@ struct HardwareVertex {
 std::vector<HardwareVertex> g_vertex_batch;
 
 RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res_mgr), last_fb_color_addr(-1), last_fb_depth_addr(-1) {
+    // Create a new cache for the lifetime of this rasterizer
     res_cache = new RasterizerCacheOpenGL(res_mgr);
 
+    // Create the hardware shader program and get attrib/uniform locations
     shader_handle = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
     attrib_position = glGetAttribLocation(shader_handle, "vert_position");
     attrib_color = glGetAttribLocation(shader_handle, "vert_color");
@@ -70,6 +72,7 @@ RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res
 
     uniform_out_maps = glGetUniformLocation(shader_handle, "out_maps");
 
+    // Set the texture samplerts to correspond to different texture units
     glUniform1i(uniform_tex, 0);
     glUniform1i(uniform_tex + 1, 1);
     glUniform1i(uniform_tex + 2, 2);
@@ -83,6 +86,7 @@ RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res
     // Attach vertex data to VAO
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
 
+    // Load hardware shader and set attributes
     glUseProgram(shader_handle);
 
     glVertexAttribPointer(attrib_position, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, position));
@@ -96,32 +100,17 @@ RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res
     glEnableVertexAttribArray(attrib_texcoords + 1);
     glEnableVertexAttribArray(attrib_texcoords + 2);
 
-    fb_color_texture.format = (GPU::Regs::PixelFormat)0;
-    fb_color_texture.width = 1;
-    fb_color_texture.height = 1;
-    fb_color_texture.gl_format = GL_RGBA;
-    fb_color_texture.gl_type = GL_UNSIGNED_BYTE;
-
+    // Create textures that framebuffer will render to, initially 1x1 to succeed in framebuffer creation
     fb_color_texture.handle = res_mgr->NewTexture();
-
-    glBindTexture(GL_TEXTURE_2D, fb_color_texture.handle);
+    ReconfigColorTexture(fb_color_texture, GPU::Regs::PixelFormat::RGBA8, 1, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, fb_color_texture.gl_format, fb_color_texture.width, fb_color_texture.height, 0, fb_color_texture.gl_format, fb_color_texture.gl_type, nullptr);
-
-    fb_depth_texture.format = (GPU::Regs::PixelFormat)0;
-    fb_depth_texture.width = 1;
-    fb_depth_texture.height = 1;
-    fb_depth_texture.gl_format = GL_DEPTH_COMPONENT;
-    fb_depth_texture.gl_type = GL_FLOAT;
-
     fb_depth_texture.handle = res_mgr->NewTexture();
-
-    glBindTexture(GL_TEXTURE_2D, fb_depth_texture.handle);
+    ReconfigDepthTexture(fb_depth_texture, Pica::Regs::DepthFormat::D16, 1, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -129,8 +118,6 @@ RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, fb_depth_texture.gl_format, fb_depth_texture.width, fb_depth_texture.height, 0, fb_depth_texture.gl_format, fb_depth_texture.gl_type, nullptr);
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -150,21 +137,22 @@ RasterizerOpenGL::~RasterizerOpenGL() {
     res_mgr->DeleteBuffer(vertex_buffer_handle);
     res_mgr->DeleteVAO(vertex_array_handle);
 
+    res_mgr->DeleteFramebuffer(framebuffer_handle);
+
     res_mgr->DeleteTexture(fb_color_texture.handle);
     res_mgr->DeleteTexture(fb_depth_texture.handle);
-
-    res_mgr->DeleteFramebuffer(fb_depth_texture.handle);
 
     delete res_cache;
 }
 
+/// Converts the triangle verts to data format acceptable by hardware shaders and adds them to the current batch
 void ProcessTriangle(Pica::VertexShader::OutputVertex& v0, Pica::VertexShader::OutputVertex& v1, Pica::VertexShader::OutputVertex& v2) {
     g_vertex_batch.push_back(HardwareVertex(v0));
     g_vertex_batch.push_back(HardwareVertex(v1));
     g_vertex_batch.push_back(HardwareVertex(v2));
 }
 
-void RasterizerOpenGL::ReconfigureTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height) {
+void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height) {
     GLint internal_format;
 
     texture.format = format;
@@ -215,8 +203,28 @@ void RasterizerOpenGL::ReconfigureTexture(TextureInfo& texture, GPU::Regs::Pixel
         texture.gl_format, texture.gl_type, nullptr);
 }
 
+void RasterizerOpenGL::ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height) {
+    GLint internal_format;
+
+    texture.format = format;
+    texture.width = width;
+    texture.height = height;
+
+    // Always float regardless of format; 0-1 range makes everything easier
+    internal_format = GL_DEPTH_COMPONENT;
+    texture.gl_format = GL_DEPTH_COMPONENT;
+    texture.gl_type = GL_FLOAT;
+
+    glBindTexture(GL_TEXTURE_2D, texture.handle);
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
+        GL_DEPTH_COMPONENT, texture.gl_type, nullptr);
+}
+
 /// Draw a batch of triangles
 void RasterizerOpenGL::DrawBatch(bool is_indexed) {
+
+    // Check if an outside part of the renderer has modified the state
+    // Set when renderer actually draws textures to screen
     if (needs_state_reinit) {
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_handle);
         glBindVertexArray(vertex_array_handle);
@@ -225,54 +233,8 @@ void RasterizerOpenGL::DrawBatch(bool is_indexed) {
         needs_state_reinit = false;
     }
 
-    u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-    u32 cur_fb_color_format = Pica::registers.framebuffer.color_format.Value();
-    u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
-    u32 cur_fb_depth_format = Pica::registers.framebuffer.depth_format;
-
-    bool fb_switched = (last_fb_color_addr != cur_fb_color_addr || last_fb_depth_addr != cur_fb_depth_addr ||
-                        last_fb_color_format != cur_fb_color_format || last_fb_depth_format != cur_fb_depth_format);
-    bool fb_resized = (fb_color_texture.width != Pica::registers.framebuffer.GetWidth() ||
-                        fb_color_texture.height != Pica::registers.framebuffer.GetHeight());
-    bool fb_format_changed = (fb_color_texture.format != (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value() ||
-                                fb_depth_texture.format != (GPU::Regs::PixelFormat)Pica::registers.framebuffer.depth_format);
-
-    if (fb_switched) {
-        CommitFramebuffer();
-    }
-
-    if (fb_resized || fb_format_changed) {
-        ReconfigureTexture(fb_color_texture, (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value(), Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
-
-        fb_depth_texture.format = (GPU::Regs::PixelFormat)Pica::registers.framebuffer.depth_format;
-        fb_depth_texture.width = Pica::registers.framebuffer.GetWidth();
-        fb_depth_texture.height = Pica::registers.framebuffer.GetHeight();
-        glBindTexture(GL_TEXTURE_2D, fb_depth_texture.handle);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, fb_depth_texture.width, fb_depth_texture.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-    }
-
-    // HACK: Need the offset here to correct some games' bottom screen offset. Problem is probably elsewhere though.
-    glViewport((GLsizei)static_cast<float>(Pica::registers.viewport_corner.x.Value()),
-                (GLsizei)static_cast<float>(Pica::registers.viewport_corner.y.Value())
-                    + (Pica::registers.framebuffer.GetHeight() - (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2),
-                (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_x.Value()).ToFloat32() * 2,
-                (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2);
-
-    if (fb_switched) {
-        last_fb_color_addr = cur_fb_color_addr;
-        last_fb_color_format = cur_fb_color_format;
-        last_fb_depth_addr = cur_fb_depth_addr;
-        last_fb_depth_format = cur_fb_depth_format;
-
-        // Currently not needed b/c of reloading buffers below, but will be needed for hw vtx shaders
-        //glDepthMask(GL_TRUE);
-        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        ReloadColorBuffer();
-        ReloadDepthBuffer();
-    }
-
-    SetupDrawState();
+    SyncFramebuffer();
+    SyncDrawState();
 
     if (Settings::values.gfx_use_hw_shaders == false) {
         Pica::VertexProcessor::ProcessBatch(is_indexed, ProcessTriangle);
@@ -280,10 +242,10 @@ void RasterizerOpenGL::DrawBatch(bool is_indexed) {
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
         glBufferData(GL_ARRAY_BUFFER, g_vertex_batch.size() * sizeof(HardwareVertex), g_vertex_batch.data(), GL_STREAM_DRAW);
 
-        glDrawArrays(GL_TRIANGLES, 0, g_vertex_batch.size());
-    }
-    else {
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)g_vertex_batch.size());
+    } else {
         // TODO: Hardware rendering with hardware shaders
+        LOG_WARNING(Render_OpenGL, "Hardware vertex shader rendering not yet implemented.");
     }
 
     g_vertex_batch.clear();
@@ -292,7 +254,7 @@ void RasterizerOpenGL::DrawBatch(bool is_indexed) {
     glDisable(GL_DEPTH_TEST);
 }
 
-void RasterizerOpenGL::NotifySwapBuffers() {
+void RasterizerOpenGL::NotifyPreSwapBuffers() {
     needs_state_reinit = true;
 
     CommitFramebuffer();
@@ -300,13 +262,19 @@ void RasterizerOpenGL::NotifySwapBuffers() {
 
 /// Notify renderer that memory region has been changed
 void RasterizerOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
-    if (is_phys_addr && Pica::registers.framebuffer.GetColorBufferPhysicalAddress() >= addr && Pica::registers.framebuffer.GetColorBufferPhysicalAddress() < addr + size) {
+    u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
+    u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
+
+    // If modified memory region overlaps start of 3ds framebuffers, reload their contents into OpenGL
+    if (is_phys_addr && cur_fb_color_addr >= addr && cur_fb_color_addr < addr + size) {
         ReloadColorBuffer();
     }
-    else if (is_phys_addr && Pica::registers.framebuffer.GetDepthBufferPhysicalAddress() >= addr && Pica::registers.framebuffer.GetDepthBufferPhysicalAddress() < addr + size) {
+
+    if (is_phys_addr && cur_fb_depth_addr >= addr && cur_fb_depth_addr < addr + size) {
         ReloadDepthBuffer();
     }
 
+    // Notify cache of flush in case the region touches a cached texture
     res_cache->NotifyFlush(is_phys_addr, addr, size);
 }
 
@@ -380,8 +348,100 @@ GLenum PICABlendFactorToOpenGL(u32 factor)
     }
 }
 
-/// Set OpenGL state to correspond to PICA register states
-void RasterizerOpenGL::SetupDrawState() {
+GLenum PICADepthFuncToOpenGL(u32 func)
+{
+    switch (func) {
+    case Pica::registers.output_merger.Never:
+        return GL_NEVER;
+        break;
+
+    case Pica::registers.output_merger.Always:
+        return GL_ALWAYS;
+        break;
+
+    case Pica::registers.output_merger.Equal:
+        return GL_EQUAL;
+        break;
+
+    case Pica::registers.output_merger.NotEqual:
+        return GL_NOTEQUAL;
+        break;
+
+    case Pica::registers.output_merger.LessThan:
+        return GL_LESS;
+        break;
+
+    case Pica::registers.output_merger.LessThanOrEqual:
+        return GL_LEQUAL;
+        break;
+
+    case Pica::registers.output_merger.GreaterThan:
+        return GL_GREATER;
+        break;
+
+    case Pica::registers.output_merger.GreaterThanOrEqual:
+        return GL_GEQUAL;
+        break;
+
+    default:
+        LOG_ERROR(Render_OpenGL, "Unknown depth test function %d", Pica::registers.output_merger.depth_test_func.Value());
+        return GL_ALWAYS;
+        break;
+    }
+}
+
+/// Syncs the state and contents of the OpenGL framebuffer with the current PICA framebuffer
+void RasterizerOpenGL::SyncFramebuffer() {
+    u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
+    u32 cur_fb_color_format = Pica::registers.framebuffer.color_format.Value();
+    u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
+    u32 cur_fb_depth_format = Pica::registers.framebuffer.depth_format;
+
+    bool fb_switched = (last_fb_color_addr != cur_fb_color_addr || last_fb_depth_addr != cur_fb_depth_addr ||
+                        last_fb_color_format != cur_fb_color_format || last_fb_depth_format != cur_fb_depth_format);
+    bool fb_resized = (fb_color_texture.width != Pica::registers.framebuffer.GetWidth() ||
+                        fb_color_texture.height != Pica::registers.framebuffer.GetHeight());
+    bool fb_format_changed = (fb_color_texture.format != (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value() ||
+                                fb_depth_texture.format != Pica::registers.framebuffer.depth_format);
+
+    if (fb_switched) {
+        CommitFramebuffer();
+    }
+
+    if (fb_resized || fb_format_changed) {
+        ReconfigColorTexture(fb_color_texture, (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value(),
+                                Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
+
+        ReconfigDepthTexture(fb_depth_texture, Pica::registers.framebuffer.depth_format,
+                                Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
+    }
+
+    if (fb_switched) {
+        last_fb_color_addr = cur_fb_color_addr;
+        last_fb_color_format = cur_fb_color_format;
+        last_fb_depth_addr = cur_fb_depth_addr;
+        last_fb_depth_format = cur_fb_depth_format;
+
+        // Currently not needed b/c of reloading buffers below, but will be needed for hw vtx shaders
+        //glDepthMask(GL_TRUE);
+        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        ReloadColorBuffer();
+        ReloadDepthBuffer();
+    }
+}
+
+/// Syncs the OpenGL drawing state with the current PICA state
+void RasterizerOpenGL::SyncDrawState() {
+
+    // HACK: Need the y offset here to correct some games' bottom screen offset. Problem is probably elsewhere though.
+    glViewport((GLsizei)static_cast<float>(Pica::registers.viewport_corner.x.Value()),
+                (GLsizei)static_cast<float>(Pica::registers.viewport_corner.y.Value())
+                    + (Pica::registers.framebuffer.GetHeight() - (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2),
+                (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_x.Value()).ToFloat32() * 2,
+                (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2);
+
+    // Sync the cull mode
     switch (Pica::registers.cull_mode.Value()) {
     case Pica::Regs::CullMode::KeepAll:
         glDisable(GL_CULL_FACE);
@@ -402,62 +462,29 @@ void RasterizerOpenGL::SetupDrawState() {
         break;
     }
 
+    // Sync depth test
     if (Pica::registers.output_merger.depth_test_enable.Value()) {
         glEnable(GL_DEPTH_TEST);
-    }
-    else {
+        glDepthFunc(PICADepthFuncToOpenGL(Pica::registers.output_merger.depth_test_func.Value()));
+    } else {
         glDisable(GL_DEPTH_TEST);
     }
 
-    switch (Pica::registers.output_merger.depth_test_func.Value()) {
-    case Pica::registers.output_merger.Never:
-        glDepthFunc(GL_NEVER);
-        break;
-
-    case Pica::registers.output_merger.Always:
-        glDepthFunc(GL_ALWAYS);
-        break;
-
-    case Pica::registers.output_merger.Equal:
-        glDepthFunc(GL_EQUAL);
-        break;
-
-    case Pica::registers.output_merger.NotEqual:
-        glDepthFunc(GL_NOTEQUAL);
-        break;
-
-    case Pica::registers.output_merger.LessThan:
-        glDepthFunc(GL_LESS);
-        break;
-
-    case Pica::registers.output_merger.LessThanOrEqual:
-        glDepthFunc(GL_LEQUAL);
-        break;
-
-    case Pica::registers.output_merger.GreaterThan:
-        glDepthFunc(GL_GREATER);
-        break;
-
-    case Pica::registers.output_merger.GreaterThanOrEqual:
-        glDepthFunc(GL_GEQUAL);
-        break;
-
-    default:
-        LOG_ERROR(Render_OpenGL, "Unknown depth test function %d", Pica::registers.output_merger.depth_test_func.Value());
-        break;
-    }
-
+    // Sync depth writing
     if (Pica::registers.output_merger.depth_write_enable.Value()) {
         glDepthMask(GL_TRUE);
-    }
-    else {
+    } else {
         glDepthMask(GL_FALSE);
     }
 
+    // Sync blend state
     if (Pica::registers.output_merger.alphablend_enable.Value()) {
         glEnable(GL_BLEND);
 
-        glBlendColor(Pica::registers.output_merger.blend_const.r, Pica::registers.output_merger.blend_const.g, Pica::registers.output_merger.blend_const.b, Pica::registers.output_merger.blend_const.a);
+        glBlendColor((GLfloat)Pica::registers.output_merger.blend_const.r.Value(),
+                        (GLfloat)Pica::registers.output_merger.blend_const.g.Value(),
+                        (GLfloat)Pica::registers.output_merger.blend_const.b.Value(),
+                        (GLfloat)Pica::registers.output_merger.blend_const.a.Value());
 
         GLenum src_blend_rgb = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_source_rgb.Value());
         GLenum dst_blend_rgb = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_dest_rgb.Value());
@@ -465,11 +492,11 @@ void RasterizerOpenGL::SetupDrawState() {
         GLenum dst_blend_a = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_dest_a.Value());
 
         glBlendFuncSeparate(src_blend_rgb, dst_blend_rgb, src_blend_a, dst_blend_a);
-    }
-    else {
+    } else {
         glDisable(GL_BLEND);
     }
 
+    // Sync shader output register mapping
     for (int i = 0; i < 16; ++i) {
         const auto& output_register_map = Pica::registers.vs_output_attributes[i];
 
@@ -484,13 +511,17 @@ void RasterizerOpenGL::SetupDrawState() {
         }
     }
 
+    // Sync texture environments
     auto tev_stages = Pica::registers.GetTevStages();
     for (int i = 0; i < 6; i++) {
         int color_srcs[3] = { (int)tev_stages[i].color_source1.Value(), (int)tev_stages[i].color_source2.Value(), (int)tev_stages[i].color_source3.Value() };
         int alpha_srcs[3] = { (int)tev_stages[i].alpha_source1.Value(), (int)tev_stages[i].alpha_source2.Value(), (int)tev_stages[i].alpha_source3.Value() };
         int color_mods[3] = { (int)tev_stages[i].color_modifier1.Value(), (int)tev_stages[i].color_modifier2.Value(), (int)tev_stages[i].color_modifier3.Value() };
         int alpha_mods[3] = { (int)tev_stages[i].alpha_modifier1.Value(), (int)tev_stages[i].alpha_modifier2.Value(), (int)tev_stages[i].alpha_modifier3.Value() };
-        float const_color[4] = { tev_stages[i].const_r.Value() / 255.0f, tev_stages[i].const_g.Value() / 255.0f, tev_stages[i].const_b.Value() / 255.0f, tev_stages[i].const_a.Value() / 255.0f };
+        float const_color[4] = { tev_stages[i].const_r.Value() / 255.0f,
+                                    tev_stages[i].const_g.Value() / 255.0f,
+                                    tev_stages[i].const_b.Value() / 255.0f,
+                                    tev_stages[i].const_a.Value() / 255.0f };
 
         glUniform3iv(uniform_tevs[i].color_src, 1, (GLint *)color_srcs);
         glUniform3iv(uniform_tevs[i].alpha_src, 1, (GLint *)alpha_srcs);
@@ -501,27 +532,26 @@ void RasterizerOpenGL::SetupDrawState() {
         glUniform4fv(uniform_tevs[i].const_color, 1, (GLfloat *)const_color);
     }
 
+    // Sync alpha testing
     if (Pica::registers.output_merger.alpha_test.enable.Value()) {
         glUniform1i(uniform_alphatest_func, Pica::registers.output_merger.alpha_test.func.Value());
         glUniform1f(uniform_alphatest_ref, Pica::registers.output_merger.alpha_test.ref.Value() / 255.0f);
-    }
-    else {
+    } else {
         glUniform1i(uniform_alphatest_func, 1);
     }
 
+    // Bind necessary textures, upload if uncached
     auto pica_textures = Pica::registers.GetTextures();
 
-    // Upload or use textures
     for (int i = 0; i < 3; ++i) {
         const auto& cur_texture = pica_textures[i];
         if (cur_texture.enabled) {
+            // TODO: evaluate whether GL_TEXTURE0 + i is consistent across OpenGL libraries
             if (i == 0) {
                 glActiveTexture(GL_TEXTURE0);
-            }
-            else if (i == 1) {
+            } else if (i == 1) {
                 glActiveTexture(GL_TEXTURE1);
-            }
-            else {
+            } else {
                 glActiveTexture(GL_TEXTURE2);
             }
 
@@ -530,6 +560,11 @@ void RasterizerOpenGL::SetupDrawState() {
     }
 }
 
+/**
+ * Save the current OpenGL framebuffer to the current PICA framebuffer in 3ds memory
+ * Loads the OpenGL framebuffer textures into temporary buffers
+ * Then copies into the 3ds framebuffer using proper Morton order
+ */
 void RasterizerOpenGL::CommitFramebuffer() {
     if (last_fb_color_addr != -1)
     {
@@ -578,7 +613,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
                 }
             }
 
-            delete ogl_img;
+            delete[] ogl_img;
         }
     }
 
@@ -604,16 +639,18 @@ void RasterizerOpenGL::CommitFramebuffer() {
                     u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_depth_texture.width * bytes_per_pixel;
                     u32 ogl_px_idx = x + y * fb_depth_texture.width;
 
+                    // TODO: take depth format into account
                     u16_le* pixel = (u16_le*)(depth_buffer + dst_offset);
-                    *pixel = ogl_img[ogl_px_idx];
+                    *pixel = (u16_le)ogl_img[ogl_px_idx];
                 }
             }
 
-            delete ogl_img;
+            delete[] ogl_img;
         }
     }
 }
 
+/// Copies the 3ds color framebuffer into the OpenGL color framebuffer texture
 void RasterizerOpenGL::ReloadColorBuffer() {
     u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_color_addr));
 
@@ -660,10 +697,11 @@ void RasterizerOpenGL::ReloadColorBuffer() {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_color_texture.width, fb_color_texture.height, fb_color_texture.gl_format, fb_color_texture.gl_type, ogl_img);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        delete ogl_img;
+        delete[] ogl_img;
     }
 }
 
+/// Copies the 3ds depth framebuffer into the OpenGL depth framebuffer texture
 void RasterizerOpenGL::ReloadDepthBuffer() {
     u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_depth_addr));
 
@@ -680,7 +718,7 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
                 u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_depth_texture.width * bytes_per_pixel;
                 u32 ogl_px_idx = x + y * fb_depth_texture.width;
 
-                // TODO: Make sure this straight copy is correct
+                // TODO: take depth format into account
                 u16_le* pixel = (u16_le*)(depth_buffer + dst_offset);
                 ogl_img[ogl_px_idx] = *pixel;
             }
@@ -690,6 +728,6 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_depth_texture.width, fb_depth_texture.height, fb_depth_texture.gl_format, fb_depth_texture.gl_type, ogl_img);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        delete ogl_img;
+        delete[] ogl_img;
     }
 }

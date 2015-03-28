@@ -70,7 +70,7 @@ void RendererOpenGL::SwapBuffers() {
     render_window->MakeCurrent();
 
     if (hw_rasterizer != nullptr) {
-        hw_rasterizer->NotifySwapBuffers();
+        hw_rasterizer->NotifyPreSwapBuffers();
     }
 
     glBindVertexArray(vertex_array_handle);

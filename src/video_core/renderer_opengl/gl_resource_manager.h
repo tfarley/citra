@@ -1,4 +1,4 @@
-// Copyright 2014 Citra Emulator Project
+// Copyright 2015 Citra Emulator Project
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
@@ -7,7 +7,7 @@
 #include "video_core/resource_manager_base.h"
 #include "video_core/pica.h"
 
-#include <map>
+#include <set>
 
 class ResourceManagerOpenGL : public ResourceManagerBase {
 public:
@@ -31,9 +31,9 @@ public:
     void DeleteFramebuffer(GLuint handle);
 
 private:
-    std::vector<GLuint> texture_handles;
-    std::vector<GLuint> shader_handles;
-    std::vector<GLuint> buffer_handles;
-    std::vector<GLuint> vao_handles;
-    std::vector<GLuint> framebuffer_handles;
+    std::set<GLuint> texture_handles;
+    std::set<GLuint> shader_handles;
+    std::set<GLuint> buffer_handles;
+    std::set<GLuint> vao_handles;
+    std::set<GLuint> framebuffer_handles;
 };

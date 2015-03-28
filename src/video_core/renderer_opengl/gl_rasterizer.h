@@ -1,4 +1,4 @@
-// Copyright 2014 Citra Emulator Project
+// Copyright 2015 Citra Emulator Project
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
@@ -15,10 +15,16 @@ public:
     /// Draw a batch of triangles
     void DrawBatch(bool is_indexed);
 
-    void NotifySwapBuffers();
+    void NotifyPreSwapBuffers();
 
+    /// Notify renderer that memory region has been changed
     void NotifyFlush(bool is_phys_addr, u32 addr, u32 size);
 
+    /**
+     * Save the current OpenGL framebuffer to the current PICA framebuffer in 3ds memory
+     * Loads the OpenGL framebuffer textures into temporary buffers
+     * Then copies into the 3ds framebuffer using proper Morton order
+     */
     void CommitFramebuffer();
 
 private:
@@ -43,11 +49,29 @@ private:
         GLenum gl_type;
     };
 
-    void ReconfigureTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height);
+    /// Structure used for storing information about some depth textures
+    struct DepthTextureInfo {
+        GLuint handle;
+        GLsizei width;
+        GLsizei height;
+        Pica::Regs::DepthFormat format;
+        GLenum gl_format;
+        GLenum gl_type;
+    };
 
-    void SetupDrawState();
+    void ReconfigColorTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height);
+    void ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height);
 
+    /// Syncs the state and contents of the OpenGL framebuffer with the current PICA framebuffer
+    void SyncFramebuffer();
+
+    /// Syncs the OpenGL drawing state with the current PICA state
+    void SyncDrawState();
+
+    /// Copies the 3ds color framebuffer into the OpenGL color framebuffer texture
     void ReloadColorBuffer();
+
+    /// Copies the 3ds depth framebuffer into the OpenGL depth framebuffer texture
     void ReloadDepthBuffer();
 
     ResourceManagerOpenGL* res_mgr;
@@ -63,7 +87,7 @@ private:
 
     // Hardware rasterizer
     TextureInfo fb_color_texture;
-    TextureInfo fb_depth_texture;
+    DepthTextureInfo fb_depth_texture;
     GLuint shader_handle;
     GLuint vertex_array_handle;
     GLuint vertex_buffer_handle;

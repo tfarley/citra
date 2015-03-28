@@ -53,7 +53,7 @@ bg_green =
 # 0 (default): Software, 1: Hardware
 gfx_use_hw_renderer =
 
-# Whether to use software or hardware shaders.
+# Whether to use software or hardware shaders. Requires hardware rendering.
 # 0 (default): Software, 1: Hardware
 gfx_use_hw_shaders =
 

@@ -78,9 +78,6 @@ private:
     /// Computes the viewport rectangle
     MathUtil::Rectangle<unsigned> GetViewportExtent();
 
-    /// Set OpenGL state to correspond to PICA register states
-    void SetupDrawState();
-
     ResourceManagerOpenGL res_mgr;
     RasterizerOpenGL* hw_rasterizer;
 

@@ -1,4 +1,4 @@
-// Copyright 2014 Citra Emulator Project
+// Copyright 2015 Citra Emulator Project
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
@@ -13,6 +13,7 @@ RasterizerCacheOpenGL::~RasterizerCacheOpenGL() {
     FullFlush();
 }
 
+/// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
 void RasterizerCacheOpenGL::LoadAndBindTexture(Pica::Regs::FullTextureConfig config) {
     u32 tex_paddr = config.config.GetPhysicalAddress();
 
@@ -26,6 +27,7 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(Pica::Regs::FullTextureConfig con
         new_texture.handle = res_mgr->NewTexture();
         glBindTexture(GL_TEXTURE_2D, new_texture.handle);
 
+        // TODO: Need to choose filters that correspond to PICA once register is declared
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
@@ -83,12 +85,13 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(Pica::Regs::FullTextureConfig con
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, info.width, info.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba_tex);
 
-        delete rgba_tex;
+        delete[] rgba_tex;
 
         texture_cache.emplace(tex_paddr, new_texture);
     }
 }
 
+/// Flush any cached resource that touches the flushed region
 void RasterizerCacheOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
     // Flush any texture that falls in the flushed region
     for (auto it = texture_cache.begin(); it != texture_cache.end();) {
@@ -106,6 +109,7 @@ void RasterizerCacheOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
     }
 }
 
+/// Flush all cached resources
 void RasterizerCacheOpenGL::FullFlush() {
     for (auto texture : texture_cache) {
         res_mgr->DeleteTexture(texture.second.handle);
