@@ -81,9 +81,9 @@ private:
     bool needs_state_reinit;
 
     u32 last_fb_color_addr;
-    u32 last_fb_color_format;
+    GPU::Regs::PixelFormat last_fb_color_format;
     u32 last_fb_depth_addr;
-    u32 last_fb_depth_format;
+    Pica::Regs::DepthFormat last_fb_depth_format;
 
     // Hardware rasterizer
     TextureInfo fb_color_texture;

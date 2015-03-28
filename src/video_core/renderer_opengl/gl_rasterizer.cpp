@@ -5,6 +5,7 @@
 #include "core/settings.h"
 #include "core/hw/gpu.h"
 
+#include "video_core/color.h"
 #include "video_core/pica.h"
 #include "video_core/vertex_processor.h"
 #include "video_core/utils.h"
@@ -196,6 +197,7 @@ void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, GPU::Regs::Pix
 
     default:
         UNIMPLEMENTED();
+        break;
     }
 
     glBindTexture(GL_TEXTURE_2D, texture.handle);
@@ -393,30 +395,30 @@ GLenum PICADepthFuncToOpenGL(u32 func)
 /// Syncs the state and contents of the OpenGL framebuffer with the current PICA framebuffer
 void RasterizerOpenGL::SyncFramebuffer() {
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-    u32 cur_fb_color_format = Pica::registers.framebuffer.color_format.Value();
+    GPU::Regs::PixelFormat cur_fb_color_format = (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value();
     u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
-    u32 cur_fb_depth_format = Pica::registers.framebuffer.depth_format;
+    Pica::Regs::DepthFormat cur_fb_depth_format = Pica::registers.framebuffer.depth_format;
 
-    bool fb_switched = (last_fb_color_addr != cur_fb_color_addr || last_fb_depth_addr != cur_fb_depth_addr ||
+    bool fb_modified = (last_fb_color_addr != cur_fb_color_addr || last_fb_depth_addr != cur_fb_depth_addr ||
                         last_fb_color_format != cur_fb_color_format || last_fb_depth_format != cur_fb_depth_format);
     bool fb_resized = (fb_color_texture.width != Pica::registers.framebuffer.GetWidth() ||
                         fb_color_texture.height != Pica::registers.framebuffer.GetHeight());
-    bool fb_format_changed = (fb_color_texture.format != (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value() ||
-                                fb_depth_texture.format != Pica::registers.framebuffer.depth_format);
+    bool fb_format_changed = (fb_color_texture.format != cur_fb_color_format ||
+                                fb_depth_texture.format != cur_fb_depth_format);
 
-    if (fb_switched) {
+    if (fb_modified) {
         CommitFramebuffer();
     }
 
     if (fb_resized || fb_format_changed) {
-        ReconfigColorTexture(fb_color_texture, (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value(),
+        ReconfigColorTexture(fb_color_texture, cur_fb_color_format,
                                 Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
 
-        ReconfigDepthTexture(fb_depth_texture, Pica::registers.framebuffer.depth_format,
+        ReconfigDepthTexture(fb_depth_texture, cur_fb_depth_format,
                                 Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
     }
 
-    if (fb_switched) {
+    if (fb_modified) {
         last_fb_color_addr = cur_fb_color_addr;
         last_fb_color_format = cur_fb_color_format;
         last_fb_depth_addr = cur_fb_depth_addr;
@@ -571,7 +573,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
         u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_color_addr));
 
         if (color_buffer != nullptr) {
-            u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(last_fb_color_format));
+            u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(last_fb_color_format);
 
             u8* ogl_img = new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel];
 
@@ -588,7 +590,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
                     u32 ogl_px_idx = x * bytes_per_pixel + y * fb_color_texture.width * bytes_per_pixel;
 
                     switch (last_fb_color_format) {
-                    case Pica::registers.framebuffer.RGBA8:
+                    case GPU::Regs::PixelFormat::RGBA8:
                     {
                         u8* pixel = color_buffer + dst_offset;
                         pixel[3] = ogl_img[ogl_px_idx + 3];
@@ -598,7 +600,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
                         break;
                     }
 
-                    case Pica::registers.framebuffer.RGBA4:
+                    case GPU::Regs::PixelFormat::RGBA4:
                     {
                         u8* pixel = color_buffer + dst_offset;
                         pixel[1] = (ogl_img[ogl_px_idx] & 0xF0) | (ogl_img[ogl_px_idx] >> 4);
@@ -607,8 +609,9 @@ void RasterizerOpenGL::CommitFramebuffer() {
                     }
 
                     default:
-                        LOG_CRITICAL(Render_Software, "Unknown framebuffer color format %x", last_fb_color_format);
+                        LOG_CRITICAL(Render_OpenGL, "Unknown framebuffer color format %x", last_fb_color_format);
                         UNIMPLEMENTED();
+                        break;
                     }
                 }
             }
@@ -623,7 +626,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
         u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_depth_addr));
 
         if (depth_buffer != nullptr) {
-            u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(last_fb_depth_format));
+            u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(last_fb_depth_format);
 
             float* ogl_img = new float[fb_depth_texture.width * fb_depth_texture.height];
 
@@ -639,9 +642,22 @@ void RasterizerOpenGL::CommitFramebuffer() {
                     u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_depth_texture.width * bytes_per_pixel;
                     u32 ogl_px_idx = x + y * fb_depth_texture.width;
 
-                    // TODO: take depth format into account
-                    u16_le* pixel = (u16_le*)(depth_buffer + dst_offset);
-                    *pixel = (u16_le)ogl_img[ogl_px_idx];
+                    switch (last_fb_depth_format) {
+                    case Pica::Regs::DepthFormat::D16:
+                        Color::EncodeD16(ogl_img[ogl_px_idx] * 65535, depth_buffer + dst_offset);
+                        break;
+                    case Pica::Regs::DepthFormat::D24:
+                        Color::EncodeD24(ogl_img[ogl_px_idx] * 16777215, depth_buffer + dst_offset);
+                        break;
+                    case Pica::Regs::DepthFormat::D24S8:
+                        // TODO: Pass real stencil value
+                        Color::EncodeD24S8(ogl_img[ogl_px_idx] * 16777215, 0, depth_buffer + dst_offset);
+                        break;
+                    default:
+                        LOG_CRITICAL(Render_OpenGL, "Unknown framebuffer depth format %x", last_fb_depth_format);
+                        UNIMPLEMENTED();
+                        break;
+                    }
                 }
             }
 
@@ -655,7 +671,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
     u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_color_addr));
 
     if (color_buffer != nullptr) {
-        u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(last_fb_color_format));
+        u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(last_fb_color_format);
 
         u8* ogl_img = new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel];
 
@@ -668,7 +684,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
                 u32 ogl_px_idx = x * bytes_per_pixel + y * fb_color_texture.width * bytes_per_pixel;
 
                 switch (last_fb_color_format) {
-                case Pica::registers.framebuffer.RGBA8:
+                case GPU::Regs::PixelFormat::RGBA8:
                 {
                     u8* pixel = color_buffer + dst_offset;
                     ogl_img[ogl_px_idx + 3] = pixel[3];
@@ -678,7 +694,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
                     break;
                 }
 
-                case Pica::registers.framebuffer.RGBA4:
+                case GPU::Regs::PixelFormat::RGBA4:
                 {
                     u8* pixel = color_buffer + dst_offset;
                     ogl_img[ogl_px_idx] = (pixel[1] & 0xF0) | (pixel[1] >> 4);
@@ -687,8 +703,9 @@ void RasterizerOpenGL::ReloadColorBuffer() {
                 }
 
                 default:
-                    LOG_CRITICAL(Render_Software, "Unknown memory framebuffer color format %x", last_fb_color_format);
+                    LOG_CRITICAL(Render_OpenGL, "Unknown memory framebuffer color format %x", last_fb_color_format);
                     UNIMPLEMENTED();
+                    break;
                 }
             }
         }
@@ -706,7 +723,7 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
     u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_depth_addr));
 
     if (depth_buffer != nullptr) {
-        u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(GPU::Regs::PixelFormat(last_fb_depth_format));
+        u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(last_fb_depth_format);
 
         float* ogl_img = new float[fb_depth_texture.width * fb_depth_texture.height];
 
@@ -718,9 +735,22 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
                 u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_depth_texture.width * bytes_per_pixel;
                 u32 ogl_px_idx = x + y * fb_depth_texture.width;
 
-                // TODO: take depth format into account
-                u16_le* pixel = (u16_le*)(depth_buffer + dst_offset);
-                ogl_img[ogl_px_idx] = *pixel;
+                switch (last_fb_depth_format) {
+                case Pica::Regs::DepthFormat::D16:
+                    ogl_img[ogl_px_idx] = Color::DecodeD16(depth_buffer + dst_offset) / 65535.0f;
+                    break;
+                case Pica::Regs::DepthFormat::D24:
+                    ogl_img[ogl_px_idx] = Color::DecodeD24(depth_buffer + dst_offset) / 16777215.0f;
+                    break;
+                case Pica::Regs::DepthFormat::D24S8:
+                    // TODO: Load stencil value into stencil buffer
+                    ogl_img[ogl_px_idx] = Color::DecodeD24S8(depth_buffer + dst_offset).x / 16777215.0f;
+                    break;
+                default:
+                    LOG_CRITICAL(Render_OpenGL, "Unknown memory framebuffer depth format %x", last_fb_depth_format);
+                    UNIMPLEMENTED();
+                    break;
+                }
             }
         }
 
