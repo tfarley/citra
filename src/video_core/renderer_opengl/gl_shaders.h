@@ -213,7 +213,7 @@ vec3 ColorCombine(int op, vec3 color[3]) {
         return min(color[0] + color[1], 1.0);
     }
     else if (op == 3) {
-        // TODO: implement add signed
+        return color[0] + color[1] - vec3(0.5, 0.5, 0.5);
     }
     else if (op == 4) {
         return color[0] * color[2] + color[1] * (vec3(1.0, 1.0, 1.0) - color[2]);
@@ -242,7 +242,7 @@ float AlphaCombine(int op, float alpha[3]) {
         return min(alpha[0] + alpha[1], 1.0);
     }
     else if (op == 3) {
-        // TODO: implement add signed
+        return alpha[0] + alpha[1] - 0.5;
     }
     else if (op == 4) {
         return alpha[0] * alpha[2] + alpha[1] * (1.0 - alpha[2]);
