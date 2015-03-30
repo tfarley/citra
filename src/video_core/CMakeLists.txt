@@ -19,6 +19,7 @@ set(SRCS
 set(HEADERS
             debug_utils/debug_utils.h
             renderer_opengl/generated/gl_3_2_core.h
+            renderer_opengl/gl_pica_to_gl.h
             renderer_opengl/gl_rasterizer.h
             renderer_opengl/gl_rasterizer_cache.h
             renderer_opengl/gl_resource_manager.h

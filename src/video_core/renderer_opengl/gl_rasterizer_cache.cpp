@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include "video_core/renderer_opengl/gl_pica_to_gl.h"
 #include "video_core/renderer_opengl/gl_rasterizer_cache.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/math.h"
@@ -31,41 +32,8 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(Pica::Regs::FullTextureConfig con
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-        switch (config.config.wrap_s.Value()) {
-        case Pica::Regs::TextureConfig::WrapMode::ClampToEdge:
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            break;
-
-        case Pica::Regs::TextureConfig::WrapMode::Repeat:
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            break;
-
-        case Pica::Regs::TextureConfig::WrapMode::MirroredRepeat:
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-            break;
-
-        default:
-            LOG_ERROR(Render_OpenGL, "Unknown texture wrap_s mode %d", config.config.wrap_s.Value());
-            break;
-        }
-
-        switch (config.config.wrap_t.Value()) {
-        case Pica::Regs::TextureConfig::WrapMode::ClampToEdge:
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            break;
-
-        case Pica::Regs::TextureConfig::WrapMode::Repeat:
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            break;
-
-        case Pica::Regs::TextureConfig::WrapMode::MirroredRepeat:
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-            break;
-
-        default:
-            LOG_ERROR(Render_OpenGL, "Unknown texture wrap_t mode %d", config.config.wrap_t.Value());
-            break;
-        }
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, PicaToGL::WrapMode(config.config.wrap_s.Value()));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, PicaToGL::WrapMode(config.config.wrap_t.Value()));
 
         auto info = Pica::DebugUtils::TextureInfo::FromPicaRegister(config.config, config.format);
 

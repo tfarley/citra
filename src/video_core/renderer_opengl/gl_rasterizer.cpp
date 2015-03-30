@@ -9,6 +9,7 @@
 #include "video_core/pica.h"
 #include "video_core/vertex_processor.h"
 #include "video_core/utils.h"
+#include "video_core/renderer_opengl/gl_pica_to_gl.h"
 #include "video_core/renderer_opengl/gl_rasterizer.h"
 #include "video_core/renderer_opengl/gl_shaders.h"
 #include "video_core/renderer_opengl/gl_shader_util.h"
@@ -251,28 +252,42 @@ void RasterizerOpenGL::DrawBatch(bool is_indexed) {
     }
 
     g_vertex_batch.clear();
-
-    // Restore state to not mess up renderer
-    glDisable(GL_DEPTH_TEST);
 }
 
 void RasterizerOpenGL::NotifyPreSwapBuffers() {
     needs_state_reinit = true;
 
     CommitFramebuffer();
+
+    // Restore state to not mess up renderer
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glActiveTexture(GL_TEXTURE0);
 }
 
 /// Notify renderer that memory region has been changed
 void RasterizerOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-    u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
+    u32 cur_fb_color_size = GPU::Regs::BytesPerPixel((GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value())
+                            * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
 
-    // If modified memory region overlaps start of 3ds framebuffers, reload their contents into OpenGL
-    if (is_phys_addr && cur_fb_color_addr >= addr && cur_fb_color_addr < addr + size) {
+    u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
+    u32 cur_fb_depth_size = Pica::Regs::BytesPerDepthPixel(Pica::registers.framebuffer.depth_format)
+                            * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
+
+    // If modified memory region overlaps 3ds framebuffers, reload their contents into OpenGL
+    u32 max_lower = std::max(addr, cur_fb_color_addr);
+    u32 min_upper = std::min(addr + size, cur_fb_color_addr + cur_fb_color_size);
+
+    if (max_lower <= min_upper) {
         ReloadColorBuffer();
     }
 
-    if (is_phys_addr && cur_fb_depth_addr >= addr && cur_fb_depth_addr < addr + size) {
+    max_lower = std::max(addr, cur_fb_depth_addr);
+    min_upper = std::min(addr + size, cur_fb_depth_addr + cur_fb_depth_size);
+
+    if (max_lower <= min_upper) {
         ReloadDepthBuffer();
     }
 
@@ -280,122 +295,11 @@ void RasterizerOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
     res_cache->NotifyFlush(is_phys_addr, addr, size);
 }
 
-GLenum PICABlendFactorToOpenGL(u32 factor)
-{
-    switch (factor) {
-    case Pica::registers.output_merger.alpha_blending.Zero:
-        return GL_ZERO;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.One:
-        return GL_ONE;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.SourceColor:
-        return GL_SRC_COLOR;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.OneMinusSourceColor:
-        return GL_ONE_MINUS_SRC_COLOR;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.DestColor:
-        return GL_DST_COLOR;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.OneMinusDestColor:
-        return GL_ONE_MINUS_DST_COLOR;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.SourceAlpha:
-        return GL_SRC_ALPHA;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.OneMinusSourceAlpha:
-        return GL_ONE_MINUS_SRC_ALPHA;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.DestAlpha:
-        return GL_DST_ALPHA;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.OneMinusDestAlpha:
-        return GL_ONE_MINUS_DST_ALPHA;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.ConstantColor:
-        return GL_CONSTANT_COLOR;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.OneMinusConstantColor:
-        return GL_ONE_MINUS_CONSTANT_COLOR;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.ConstantAlpha:
-        return GL_CONSTANT_ALPHA;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.OneMinusConstantAlpha:
-        return GL_ONE_MINUS_CONSTANT_ALPHA;
-        break;
-
-    case Pica::registers.output_merger.alpha_blending.SourceAlphaSaturate:
-        return GL_SRC_ALPHA_SATURATE;
-        break;
-
-    default:
-        LOG_ERROR(Render_OpenGL, "Unknown blend factor %d", Pica::registers.output_merger.alpha_blending.factor_source_a.Value());
-        return GL_ONE;
-        break;
-    }
-}
-
-GLenum PICADepthFuncToOpenGL(u32 func)
-{
-    switch (func) {
-    case Pica::registers.output_merger.Never:
-        return GL_NEVER;
-        break;
-
-    case Pica::registers.output_merger.Always:
-        return GL_ALWAYS;
-        break;
-
-    case Pica::registers.output_merger.Equal:
-        return GL_EQUAL;
-        break;
-
-    case Pica::registers.output_merger.NotEqual:
-        return GL_NOTEQUAL;
-        break;
-
-    case Pica::registers.output_merger.LessThan:
-        return GL_LESS;
-        break;
-
-    case Pica::registers.output_merger.LessThanOrEqual:
-        return GL_LEQUAL;
-        break;
-
-    case Pica::registers.output_merger.GreaterThan:
-        return GL_GREATER;
-        break;
-
-    case Pica::registers.output_merger.GreaterThanOrEqual:
-        return GL_GEQUAL;
-        break;
-
-    default:
-        LOG_ERROR(Render_OpenGL, "Unknown depth test function %d", Pica::registers.output_merger.depth_test_func.Value());
-        return GL_ALWAYS;
-        break;
-    }
-}
-
 /// Syncs the state and contents of the OpenGL framebuffer with the current PICA framebuffer
 void RasterizerOpenGL::SyncFramebuffer() {
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
     GPU::Regs::PixelFormat cur_fb_color_format = (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value();
+
     u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
     Pica::Regs::DepthFormat cur_fb_depth_format = Pica::registers.framebuffer.depth_format;
 
@@ -467,7 +371,7 @@ void RasterizerOpenGL::SyncDrawState() {
     // Sync depth test
     if (Pica::registers.output_merger.depth_test_enable.Value()) {
         glEnable(GL_DEPTH_TEST);
-        glDepthFunc(PICADepthFuncToOpenGL(Pica::registers.output_merger.depth_test_func.Value()));
+        glDepthFunc(PicaToGL::DepthFunc(Pica::registers.output_merger.depth_test_func.Value()));
     } else {
         glDisable(GL_DEPTH_TEST);
     }
@@ -488,17 +392,17 @@ void RasterizerOpenGL::SyncDrawState() {
                         (GLfloat)Pica::registers.output_merger.blend_const.b.Value(),
                         (GLfloat)Pica::registers.output_merger.blend_const.a.Value());
 
-        GLenum src_blend_rgb = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_source_rgb.Value());
-        GLenum dst_blend_rgb = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_dest_rgb.Value());
-        GLenum src_blend_a = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_source_a.Value());
-        GLenum dst_blend_a = PICABlendFactorToOpenGL(Pica::registers.output_merger.alpha_blending.factor_dest_a.Value());
+        GLenum src_blend_rgb = PicaToGL::BlendFactor(Pica::registers.output_merger.alpha_blending.factor_source_rgb.Value());
+        GLenum dst_blend_rgb = PicaToGL::BlendFactor(Pica::registers.output_merger.alpha_blending.factor_dest_rgb.Value());
+        GLenum src_blend_a = PicaToGL::BlendFactor(Pica::registers.output_merger.alpha_blending.factor_source_a.Value());
+        GLenum dst_blend_a = PicaToGL::BlendFactor(Pica::registers.output_merger.alpha_blending.factor_dest_a.Value());
 
         glBlendFuncSeparate(src_blend_rgb, dst_blend_rgb, src_blend_a, dst_blend_a);
     } else {
         glDisable(GL_BLEND);
     }
 
-    // Sync shader output register mapping
+    // Sync shader output register mapping to hw shader
     for (int i = 0; i < 16; ++i) {
         const auto& output_register_map = Pica::registers.vs_output_attributes[i];
 
@@ -513,7 +417,7 @@ void RasterizerOpenGL::SyncDrawState() {
         }
     }
 
-    // Sync texture environments
+    // Sync texture environments to hw shader
     auto tev_stages = Pica::registers.GetTevStages();
     for (int i = 0; i < 6; i++) {
         int color_srcs[3] = { (int)tev_stages[i].color_source1.Value(), (int)tev_stages[i].color_source2.Value(), (int)tev_stages[i].color_source3.Value() };
@@ -534,7 +438,7 @@ void RasterizerOpenGL::SyncDrawState() {
         glUniform4fv(uniform_tevs[i].const_color, 1, (GLfloat *)const_color);
     }
 
-    // Sync alpha testing
+    // Sync alpha testing to hw shader
     if (Pica::registers.output_merger.alpha_test.enable.Value()) {
         glUniform1i(uniform_alphatest_func, Pica::registers.output_merger.alpha_test.func.Value());
         glUniform1f(uniform_alphatest_ref, Pica::registers.output_merger.alpha_test.ref.Value() / 255.0f);
@@ -542,7 +446,7 @@ void RasterizerOpenGL::SyncDrawState() {
         glUniform1i(uniform_alphatest_func, 1);
     }
 
-    // Bind necessary textures, upload if uncached
+    // Bind necessary texture(s), upload if uncached
     auto pica_textures = Pica::registers.GetTextures();
 
     for (int i = 0; i < 3; ++i) {
@@ -644,14 +548,14 @@ void RasterizerOpenGL::CommitFramebuffer() {
 
                     switch (last_fb_depth_format) {
                     case Pica::Regs::DepthFormat::D16:
-                        Color::EncodeD16(ogl_img[ogl_px_idx] * 65535, depth_buffer + dst_offset);
+                        Color::EncodeD16((u32)(ogl_img[ogl_px_idx] * 65535), depth_buffer + dst_offset);
                         break;
                     case Pica::Regs::DepthFormat::D24:
-                        Color::EncodeD24(ogl_img[ogl_px_idx] * 16777215, depth_buffer + dst_offset);
+                        Color::EncodeD24((u32)(ogl_img[ogl_px_idx] * 16777215), depth_buffer + dst_offset);
                         break;
                     case Pica::Regs::DepthFormat::D24S8:
                         // TODO: Pass real stencil value
-                        Color::EncodeD24S8(ogl_img[ogl_px_idx] * 16777215, 0, depth_buffer + dst_offset);
+                        Color::EncodeD24S8((u32)(ogl_img[ogl_px_idx] * 16777215), 0, depth_buffer + dst_offset);
                         break;
                     default:
                         LOG_CRITICAL(Render_OpenGL, "Unknown framebuffer depth format %x", last_fb_depth_format);
