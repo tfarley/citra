@@ -54,14 +54,12 @@ void Config::ReadValues() {
     qt_config->endGroup();
 
     qt_config->beginGroup("Renderer");
+    Settings::values.use_hw_renderer = qt_config->value("use_hw_renderer", false).toBool();
+    Settings::values.use_hw_shaders = qt_config->value("use_hw_shaders", false).toBool();
+
     Settings::values.bg_red   = qt_config->value("bg_red",   1.0).toFloat();
     Settings::values.bg_green = qt_config->value("bg_green", 1.0).toFloat();
     Settings::values.bg_blue  = qt_config->value("bg_blue",  1.0).toFloat();
-    qt_config->endGroup();
-
-    qt_config->beginGroup("Graphics");
-    Settings::values.gfx_use_hw_renderer = qt_config->value("gfx_use_hw_renderer", false).toBool();
-    Settings::values.gfx_use_hw_shaders = qt_config->value("gfx_use_hw_shaders", false).toBool();
     qt_config->endGroup();
 
     qt_config->beginGroup("Data Storage");
@@ -110,15 +108,13 @@ void Config::SaveValues() {
     qt_config->endGroup();
 
     qt_config->beginGroup("Renderer");
+    qt_config->setValue("use_hw_renderer", Settings::values.use_hw_renderer);
+    qt_config->setValue("use_hw_shaders", Settings::values.use_hw_shaders);
+
     // Cast to double because Qt's written float values are not human-readable
     qt_config->setValue("bg_red",   (double)Settings::values.bg_red);
     qt_config->setValue("bg_green", (double)Settings::values.bg_green);
     qt_config->setValue("bg_blue",  (double)Settings::values.bg_blue);
-    qt_config->endGroup();
-
-    qt_config->beginGroup("Graphics");
-    qt_config->setValue("gfx_use_hw_renderer", Settings::values.gfx_use_hw_renderer);
-    qt_config->setValue("gfx_use_hw_shaders", Settings::values.gfx_use_hw_shaders);
     qt_config->endGroup();
 
     qt_config->beginGroup("Data Storage");

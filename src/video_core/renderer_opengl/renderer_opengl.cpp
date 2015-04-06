@@ -124,11 +124,11 @@ void RendererOpenGL::SwapBuffers() {
     // If switched to/from hw renderer, create/delete hw rasterizer
     if (hw_rasterizer == nullptr)
     {
-        if (Settings::values.gfx_use_hw_renderer) {
+        if (Settings::values.use_hw_renderer) {
             hw_rasterizer = new RasterizerOpenGL(&res_mgr);
         }
     } else {
-        if (!Settings::values.gfx_use_hw_renderer) {
+        if (!Settings::values.use_hw_renderer) {
             delete hw_rasterizer;
             hw_rasterizer = nullptr;
         }
@@ -239,7 +239,7 @@ void RendererOpenGL::InitOpenGLObjects() {
     }
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    if (Settings::values.gfx_use_hw_renderer) {
+    if (Settings::values.use_hw_renderer) {
         hw_rasterizer = new RasterizerOpenGL(&res_mgr);
     }
 }

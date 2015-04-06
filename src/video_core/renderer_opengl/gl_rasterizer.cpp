@@ -239,7 +239,7 @@ void RasterizerOpenGL::DrawBatch(bool is_indexed) {
     SyncFramebuffer();
     SyncDrawState();
 
-    if (Settings::values.gfx_use_hw_shaders == false) {
+    if (Settings::values.use_hw_shaders == false) {
         Pica::VertexProcessor::ProcessBatch(is_indexed, ProcessTriangle);
 
         glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
