@@ -130,7 +130,7 @@ RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res
     // Configure framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_handle);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb_color_texture.handle, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.handle, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.handle, 0);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
@@ -215,14 +215,33 @@ void RasterizerOpenGL::ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Reg
     texture.width = width;
     texture.height = height;
 
-    // Always float regardless of format; 0-1 range makes everything easier
-    internal_format = GL_DEPTH_COMPONENT;
-    texture.gl_format = GL_DEPTH_COMPONENT;
-    texture.gl_type = GL_FLOAT;
+    switch (format) {
+    case Pica::Regs::DepthFormat::D16:
+        internal_format = GL_DEPTH_COMPONENT16;
+        texture.gl_format = GL_DEPTH_COMPONENT;
+        texture.gl_type = GL_UNSIGNED_SHORT;
+        break;
+
+    case Pica::Regs::DepthFormat::D24:
+        internal_format = GL_DEPTH_COMPONENT24;
+        texture.gl_format = GL_DEPTH_COMPONENT;
+        texture.gl_type = GL_UNSIGNED_INT_24_8;
+        break;
+
+    case Pica::Regs::DepthFormat::D24S8:
+        internal_format = GL_DEPTH24_STENCIL8;
+        texture.gl_format = GL_DEPTH_STENCIL;
+        texture.gl_type = GL_UNSIGNED_INT_24_8;
+        break;
+
+    default:
+        UNIMPLEMENTED();
+        break;
+    }
 
     glBindTexture(GL_TEXTURE_2D, texture.handle);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
-        GL_DEPTH_COMPONENT, texture.gl_type, nullptr);
+        texture.gl_format, texture.gl_type, nullptr);
 }
 
 /// Draw a batch of triangles
@@ -375,7 +394,7 @@ void RasterizerOpenGL::SyncDrawState() {
     // Sync depth test
     if (Pica::registers.output_merger.depth_test_enable.Value()) {
         glEnable(GL_DEPTH_TEST);
-        glDepthFunc(PicaToGL::DepthFunc(Pica::registers.output_merger.depth_test_func.Value()));
+        glDepthFunc(PicaToGL::CompareFunc(Pica::registers.output_merger.depth_test_func.Value()));
     } else {
         glDisable(GL_DEPTH_TEST);
     }
@@ -386,6 +405,24 @@ void RasterizerOpenGL::SyncDrawState() {
     } else {
         glDepthMask(GL_FALSE);
     }
+
+    // TODO: Untested, make sure stencil_reference_value refers to this mask
+    // Sync stencil test
+    if (Pica::registers.output_merger.stencil_test.stencil_test_enable.Value()) {
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(PicaToGL::CompareFunc(Pica::registers.output_merger.stencil_test.stencil_test_func.Value()),
+                        Pica::registers.output_merger.stencil_test.stencil_reference_value.Value(),
+                        Pica::registers.output_merger.stencil_test.stencil_replacement_value.Value());
+    }
+    else {
+        glDisable(GL_STENCIL_TEST);
+    }
+
+    // TODO: Untested, make sure stencil_mask refers to this mask
+    // Sync stencil writing
+    glStencilMask(Pica::registers.output_merger.stencil_test.stencil_mask.Value());
+
+    // TODO: Need to sync glStencilOp() once corresponding PICA registers are discovered
 
     // Sync blend state
     if (Pica::registers.output_merger.alphablend_enable.Value()) {
@@ -526,13 +563,16 @@ void RasterizerOpenGL::CommitFramebuffer() {
 
     if (last_fb_depth_addr != -1)
     {
-        // TODO: Untested
+        // TODO: Seems correct, but doesn't quite match sw renderer output. One of them is wrong.
         u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_depth_addr));
 
         if (depth_buffer != nullptr) {
             u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(last_fb_depth_format);
 
-            float* ogl_img = new float[fb_depth_texture.width * fb_depth_texture.height];
+            // OGL needs 4 bpp alignment for D24
+            u32 ogl_bpp = bytes_per_pixel == 3 ? 4 : bytes_per_pixel;
+
+            u8* ogl_img = new u8[fb_depth_texture.width * fb_depth_texture.height * ogl_bpp];
 
             glBindTexture(GL_TEXTURE_2D, fb_depth_texture.handle);
             glGetTexImage(GL_TEXTURE_2D, 0, fb_depth_texture.gl_format, fb_depth_texture.gl_type, ogl_img);
@@ -548,15 +588,17 @@ void RasterizerOpenGL::CommitFramebuffer() {
 
                     switch (last_fb_depth_format) {
                     case Pica::Regs::DepthFormat::D16:
-                        Color::EncodeD16((u32)(ogl_img[ogl_px_idx] * 65535), depth_buffer + dst_offset);
+                        Color::EncodeD16(((u16*)ogl_img)[ogl_px_idx], depth_buffer + dst_offset);
                         break;
                     case Pica::Regs::DepthFormat::D24:
-                        Color::EncodeD24((u32)(ogl_img[ogl_px_idx] * 16777215), depth_buffer + dst_offset);
+                        Color::EncodeD24(((u32*)ogl_img)[ogl_px_idx], depth_buffer + dst_offset);
                         break;
                     case Pica::Regs::DepthFormat::D24S8:
-                        // TODO: Pass real stencil value
-                        Color::EncodeD24S8((u32)(ogl_img[ogl_px_idx] * 16777215), 0, depth_buffer + dst_offset);
+                    {
+                        u32 depth_stencil = ((u32*)ogl_img)[ogl_px_idx];
+                        Color::EncodeD24S8(depth_stencil >> 8, depth_stencil & 0xFF, depth_buffer + dst_offset);
                         break;
+                    }
                     default:
                         LOG_CRITICAL(Render_OpenGL, "Unknown framebuffer depth format %x", last_fb_depth_format);
                         UNIMPLEMENTED();
@@ -624,12 +666,16 @@ void RasterizerOpenGL::ReloadColorBuffer() {
 
 /// Copies the 3ds depth framebuffer into the OpenGL depth framebuffer texture
 void RasterizerOpenGL::ReloadDepthBuffer() {
+    // TODO: Appears to work, but double-check endianness of depth values and order of depth-stencil
     u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_depth_addr));
 
     if (depth_buffer != nullptr) {
         u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(last_fb_depth_format);
 
-        float* ogl_img = new float[fb_depth_texture.width * fb_depth_texture.height];
+        // OGL needs 4 bpp alignment for D24
+        u32 ogl_bpp = bytes_per_pixel == 3 ? 4 : bytes_per_pixel;
+
+        u8* ogl_img = new u8[fb_depth_texture.width * fb_depth_texture.height * ogl_bpp];
 
         for (int x = 0; x < fb_depth_texture.width; ++x)
         {
@@ -641,15 +687,17 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
 
                 switch (last_fb_depth_format) {
                 case Pica::Regs::DepthFormat::D16:
-                    ogl_img[ogl_px_idx] = Color::DecodeD16(depth_buffer + dst_offset) / 65535.0f;
+                    ((u16*)ogl_img)[ogl_px_idx] = Color::DecodeD16(depth_buffer + dst_offset);
                     break;
                 case Pica::Regs::DepthFormat::D24:
-                    ogl_img[ogl_px_idx] = Color::DecodeD24(depth_buffer + dst_offset) / 16777215.0f;
+                    ((u32*)ogl_img)[ogl_px_idx] = Color::DecodeD24(depth_buffer + dst_offset);
                     break;
                 case Pica::Regs::DepthFormat::D24S8:
-                    // TODO: Load stencil value into stencil buffer
-                    ogl_img[ogl_px_idx] = Color::DecodeD24S8(depth_buffer + dst_offset).x / 16777215.0f;
+                {
+                    Math::Vec2<u32> depth_stencil = Color::DecodeD24S8(depth_buffer + dst_offset);
+                    ((u32*)ogl_img)[ogl_px_idx] = depth_stencil.x << 8 | depth_stencil.y;
                     break;
+                }
                 default:
                     LOG_CRITICAL(Render_OpenGL, "Unknown memory framebuffer depth format %x", last_fb_depth_format);
                     UNIMPLEMENTED();

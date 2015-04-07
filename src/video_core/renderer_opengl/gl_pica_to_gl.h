@@ -65,7 +65,7 @@ static GLenum BlendFactor(u32 factor)
     }
 }
 
-static GLenum DepthFunc(u32 func)
+static GLenum CompareFunc(u32 func)
 {
     switch (func) {
     case Pica::registers.output_merger.Never:
@@ -85,7 +85,7 @@ static GLenum DepthFunc(u32 func)
     case Pica::registers.output_merger.GreaterThanOrEqual:
         return GL_GEQUAL;
     default:
-        LOG_ERROR(Render_OpenGL, "Unknown depth test function %d", func);
+        LOG_ERROR(Render_OpenGL, "Unknown compare function %d", func);
         return GL_ALWAYS;
     }
 }
