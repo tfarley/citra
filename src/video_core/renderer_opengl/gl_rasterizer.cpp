@@ -62,14 +62,16 @@ RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res
     uniform_tex = glGetUniformLocation(shader_handle, "tex");
     
     for (int i = 0; i < 6; i++) {
+        auto& uniform_tev = uniform_tevs[i];
+
         std::string tev_ref_str = "tevs[" + std::to_string(i) + "]";
-        uniform_tevs[i].color_src = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_src").c_str());
-        uniform_tevs[i].alpha_src = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_src").c_str());
-        uniform_tevs[i].color_mod = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_mod").c_str());
-        uniform_tevs[i].alpha_mod = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_mod").c_str());
-        uniform_tevs[i].color_op = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_op").c_str());
-        uniform_tevs[i].alpha_op = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_op").c_str());
-        uniform_tevs[i].const_color = glGetUniformLocation(shader_handle, (tev_ref_str + ".const_color").c_str());
+        uniform_tev.color_src = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_src").c_str());
+        uniform_tev.alpha_src = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_src").c_str());
+        uniform_tev.color_mod = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_mod").c_str());
+        uniform_tev.alpha_mod = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_mod").c_str());
+        uniform_tev.color_op = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_op").c_str());
+        uniform_tev.alpha_op = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_op").c_str());
+        uniform_tev.const_color = glGetUniformLocation(shader_handle, (tev_ref_str + ".const_color").c_str());
     }
 
     uniform_out_maps = glGetUniformLocation(shader_handle, "out_maps");
@@ -340,12 +342,14 @@ void RasterizerOpenGL::SyncFramebuffer() {
 /// Syncs the OpenGL drawing state with the current PICA state
 void RasterizerOpenGL::SyncDrawState() {
 
-    // HACK: Need the y offset here to correct some games' bottom screen offset. Problem is probably elsewhere though.
+    // HACK: Sets viewport to center horizontally to fix some games' bottom screens. Works in all my tests, but is it correct?
+    GLsizei viewportWidth = (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_x.Value()).ToFloat32() * 2;
+    GLsizei viewportHeight = (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2;
+
     glViewport((GLsizei)static_cast<float>(Pica::registers.viewport_corner.x.Value()),
                 (GLsizei)static_cast<float>(Pica::registers.viewport_corner.y.Value())
-                    + (Pica::registers.framebuffer.GetHeight() - (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2),
-                (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_x.Value()).ToFloat32() * 2,
-                (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2);
+                    + Pica::registers.framebuffer.GetHeight() - viewportHeight,
+                viewportWidth, viewportHeight);
 
     // Sync the cull mode
     switch (Pica::registers.cull_mode.Value()) {
@@ -420,22 +424,25 @@ void RasterizerOpenGL::SyncDrawState() {
     // Sync texture environments to hw shader
     auto tev_stages = Pica::registers.GetTevStages();
     for (int i = 0; i < 6; i++) {
-        int color_srcs[3] = { (int)tev_stages[i].color_source1.Value(), (int)tev_stages[i].color_source2.Value(), (int)tev_stages[i].color_source3.Value() };
-        int alpha_srcs[3] = { (int)tev_stages[i].alpha_source1.Value(), (int)tev_stages[i].alpha_source2.Value(), (int)tev_stages[i].alpha_source3.Value() };
-        int color_mods[3] = { (int)tev_stages[i].color_modifier1.Value(), (int)tev_stages[i].color_modifier2.Value(), (int)tev_stages[i].color_modifier3.Value() };
-        int alpha_mods[3] = { (int)tev_stages[i].alpha_modifier1.Value(), (int)tev_stages[i].alpha_modifier2.Value(), (int)tev_stages[i].alpha_modifier3.Value() };
-        float const_color[4] = { tev_stages[i].const_r.Value() / 255.0f,
-                                    tev_stages[i].const_g.Value() / 255.0f,
-                                    tev_stages[i].const_b.Value() / 255.0f,
-                                    tev_stages[i].const_a.Value() / 255.0f };
+        const auto& stage = tev_stages[i];
+        const auto& uniform_tev = uniform_tevs[i];
 
-        glUniform3iv(uniform_tevs[i].color_src, 1, (GLint *)color_srcs);
-        glUniform3iv(uniform_tevs[i].alpha_src, 1, (GLint *)alpha_srcs);
-        glUniform3iv(uniform_tevs[i].color_mod, 1, (GLint *)color_mods);
-        glUniform3iv(uniform_tevs[i].alpha_mod, 1, (GLint *)alpha_mods);
-        glUniform1i(uniform_tevs[i].color_op, (int)tev_stages[i].color_op.Value());
-        glUniform1i(uniform_tevs[i].alpha_op, (int)tev_stages[i].alpha_op.Value());
-        glUniform4fv(uniform_tevs[i].const_color, 1, (GLfloat *)const_color);
+        GLint color_srcs[3] = { (GLint)stage.color_source1.Value(), (GLint)stage.color_source2.Value(), (GLint)stage.color_source3.Value() };
+        GLint alpha_srcs[3] = { (GLint)stage.alpha_source1.Value(), (GLint)stage.alpha_source2.Value(), (GLint)stage.alpha_source3.Value() };
+        GLint color_mods[3] = { (GLint)stage.color_modifier1.Value(), (GLint)stage.color_modifier2.Value(), (GLint)stage.color_modifier3.Value() };
+        GLint alpha_mods[3] = { (GLint)stage.alpha_modifier1.Value(), (GLint)stage.alpha_modifier2.Value(), (GLint)stage.alpha_modifier3.Value() };
+        GLfloat const_color[4] = { stage.const_r.Value() / 255.0f,
+                                    stage.const_g.Value() / 255.0f,
+                                    stage.const_b.Value() / 255.0f,
+                                    stage.const_a.Value() / 255.0f };
+
+        glUniform3iv(uniform_tev.color_src, 1, color_srcs);
+        glUniform3iv(uniform_tev.alpha_src, 1, alpha_srcs);
+        glUniform3iv(uniform_tev.color_mod, 1, color_mods);
+        glUniform3iv(uniform_tev.alpha_mod, 1, alpha_mods);
+        glUniform1i(uniform_tev.color_op, (GLint)stage.color_op.Value());
+        glUniform1i(uniform_tev.alpha_op, (GLint)stage.alpha_op.Value());
+        glUniform4fv(uniform_tev.const_color, 1, const_color);
     }
 
     // Sync alpha testing to hw shader
@@ -450,18 +457,11 @@ void RasterizerOpenGL::SyncDrawState() {
     auto pica_textures = Pica::registers.GetTextures();
 
     for (int i = 0; i < 3; ++i) {
-        const auto& cur_texture = pica_textures[i];
-        if (cur_texture.enabled) {
-            // TODO: evaluate whether GL_TEXTURE0 + i is consistent across OpenGL libraries
-            if (i == 0) {
-                glActiveTexture(GL_TEXTURE0);
-            } else if (i == 1) {
-                glActiveTexture(GL_TEXTURE1);
-            } else {
-                glActiveTexture(GL_TEXTURE2);
-            }
+        const auto& texture = pica_textures[i];
 
-            res_cache->LoadAndBindTexture(pica_textures[i]);
+        if (texture.enabled) {
+            glActiveTexture(GL_TEXTURE0 + i);
+            res_cache->LoadAndBindTexture(texture);
         }
     }
 }

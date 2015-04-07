@@ -15,7 +15,7 @@ RasterizerCacheOpenGL::~RasterizerCacheOpenGL() {
 }
 
 /// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
-void RasterizerCacheOpenGL::LoadAndBindTexture(Pica::Regs::FullTextureConfig config) {
+void RasterizerCacheOpenGL::LoadAndBindTexture(const Pica::Regs::FullTextureConfig& config) {
     u32 tex_paddr = config.config.GetPhysicalAddress();
 
     auto cached_texture = texture_cache.find(tex_paddr);

@@ -16,7 +16,7 @@ public:
     virtual ~RasterizerCacheOpenGL();
 
     /// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
-    void LoadAndBindTexture(Pica::Regs::FullTextureConfig config);
+    void LoadAndBindTexture(const Pica::Regs::FullTextureConfig& config);
 
     /// Flush any cached resource that touches the flushed region
     void NotifyFlush(bool is_phys_addr, u32 addr, u32 size);
