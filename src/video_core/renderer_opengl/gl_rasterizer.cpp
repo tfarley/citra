@@ -130,7 +130,7 @@ RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res
     // Configure framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_handle);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb_color_texture.handle, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.handle, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.handle, 0);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
@@ -341,6 +341,22 @@ void RasterizerOpenGL::SyncFramebuffer() {
 
         ReconfigDepthTexture(fb_depth_texture, cur_fb_depth_format,
                                 Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
+
+        // Only attach depth buffer as stencil if it supports stencil
+        switch (cur_fb_depth_format) {
+        case Pica::Regs::DepthFormat::D16:
+        case Pica::Regs::DepthFormat::D24:
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+            break;
+
+        case Pica::Regs::DepthFormat::D24S8:
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.handle, 0);
+            break;
+
+        default:
+            UNIMPLEMENTED();
+            break;
+        }
     }
 
     if (fb_modified) {
