@@ -53,17 +53,21 @@ static std::array<GLfloat, 3*2> MakeOrthographicMatrix(const float width, const 
 
 /// RendererOpenGL constructor
 RendererOpenGL::RendererOpenGL() {
+    hw_rasterizer = new RasterizerOpenGL();
     resolution_width  = std::max(VideoCore::kScreenTopWidth, VideoCore::kScreenBottomWidth);
     resolution_height = VideoCore::kScreenTopHeight + VideoCore::kScreenBottomHeight;
 }
 
 /// RendererOpenGL destructor
 RendererOpenGL::~RendererOpenGL() {
+    delete hw_rasterizer;
 }
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
     render_window->MakeCurrent();
+
+    state.Apply();
 
     for(int i : {0, 1}) {
         const auto& framebuffer = GPU::g_regs.framebuffer_config[i];
@@ -75,7 +79,7 @@ void RendererOpenGL::SwapBuffers() {
         LCD::Read(color_fill.raw, lcd_color_addr);
 
         if (color_fill.is_enabled) {
-            LoadColorToActiveGLTexture(color_fill.color_r, color_fill.color_g, color_fill.color_b, textures[i]);
+            LoadColorToActiveGLTexture(state, color_fill.color_r, color_fill.color_g, color_fill.color_b, textures[i]);
 
             // Resize the texture in case the framebuffer size has changed
             textures[i].width = 1;
@@ -87,9 +91,9 @@ void RendererOpenGL::SwapBuffers() {
                 // Reallocate texture if the framebuffer size has changed.
                 // This is expected to not happen very often and hence should not be a
                 // performance problem.
-                ConfigureFramebufferTexture(textures[i], framebuffer);
+                ConfigureFramebufferTexture(state, textures[i], framebuffer);
             }
-            LoadFBToActiveGLTexture(framebuffer, textures[i]);
+            LoadFBToActiveGLTexture(state, framebuffer, textures[i]);
 
             // Resize the texture in case the framebuffer size has changed
             textures[i].width = framebuffer.width;
@@ -116,7 +120,7 @@ void RendererOpenGL::SwapBuffers() {
 /**
  * Loads framebuffer from emulated memory into the active OpenGL texture.
  */
-void RendererOpenGL::LoadFBToActiveGLTexture(const GPU::Regs::FramebufferConfig& framebuffer,
+void RendererOpenGL::LoadFBToActiveGLTexture(OpenGLState &state, const GPU::Regs::FramebufferConfig& framebuffer,
                                              const TextureInfo& texture) {
 
     const PAddr framebuffer_addr = framebuffer.active_fb == 0 ?
@@ -139,7 +143,11 @@ void RendererOpenGL::LoadFBToActiveGLTexture(const GPU::Regs::FramebufferConfig&
     // only allows rows to have a memory alignement of 4.
     ASSERT(pixel_stride % 4 == 0);
 
-    glBindTexture(GL_TEXTURE_2D, texture.handle);
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = texture.handle;
+    state.Apply();
+    
+    glActiveTexture(GL_TEXTURE0);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)pixel_stride);
 
     // Update existing texture
@@ -151,7 +159,6 @@ void RendererOpenGL::LoadFBToActiveGLTexture(const GPU::Regs::FramebufferConfig&
                     texture.gl_format, texture.gl_type, framebuffer_data);
 
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 /**
@@ -159,15 +166,17 @@ void RendererOpenGL::LoadFBToActiveGLTexture(const GPU::Regs::FramebufferConfig&
  * Since the color is solid, the texture can be 1x1 but will stretch across whatever it's rendered on.
  * This has the added benefit of being *really fast*.
  */
-void RendererOpenGL::LoadColorToActiveGLTexture(u8 color_r, u8 color_g, u8 color_b,
+void RendererOpenGL::LoadColorToActiveGLTexture(OpenGLState &state, u8 color_r, u8 color_g, u8 color_b,
                                                 const TextureInfo& texture) {
-    glBindTexture(GL_TEXTURE_2D, texture.handle);
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = texture.handle;
+    state.Apply();
 
+    glActiveTexture(GL_TEXTURE0);
     u8 framebuffer_data[3] = { color_r, color_g, color_b };
 
     // Update existing texture
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, framebuffer_data);
-    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 /**
@@ -175,7 +184,8 @@ void RendererOpenGL::LoadColorToActiveGLTexture(u8 color_r, u8 color_g, u8 color
  */
 void RendererOpenGL::InitOpenGLObjects() {
     glClearColor(Settings::values.bg_red, Settings::values.bg_green, Settings::values.bg_blue, 0.0f);
-    glDisable(GL_DEPTH_TEST);
+    state.depth.test_enabled = false;
+    state.texture_unit[0].enabled_2d = true;
 
     // Link shaders and get variable locations
     program_id = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader, GLShaders::g_fragment_shader);
@@ -189,10 +199,12 @@ void RendererOpenGL::InitOpenGLObjects() {
 
     // Generate VAO
     glGenVertexArrays(1, &vertex_array_handle);
-    glBindVertexArray(vertex_array_handle);
+
+    state.draw.vertex_array = vertex_array_handle;
+    state.draw.vertex_buffer = vertex_buffer_handle;
+    state.Apply();
 
     // Attach vertex data to VAO
-    glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
     glBufferData(GL_ARRAY_BUFFER, sizeof(ScreenRectVertex) * 4, nullptr, GL_STREAM_DRAW);
     glVertexAttribPointer(attrib_position,  2, GL_FLOAT, GL_FALSE, sizeof(ScreenRectVertex), (GLvoid*)offsetof(ScreenRectVertex, position));
     glVertexAttribPointer(attrib_tex_coord, 2, GL_FLOAT, GL_FALSE, sizeof(ScreenRectVertex), (GLvoid*)offsetof(ScreenRectVertex, tex_coord));
@@ -206,17 +218,22 @@ void RendererOpenGL::InitOpenGLObjects() {
         // Allocation of storage is deferred until the first frame, when we
         // know the framebuffer size.
 
-        glBindTexture(GL_TEXTURE_2D, texture.handle);
+        state.texture_unit[0].enabled_2d = true;
+        state.texture_unit[0].texture_2d = texture.handle;
+        state.Apply();
+
+        glActiveTexture(GL_TEXTURE0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
-    glBindTexture(GL_TEXTURE_2D, 0);
+
+    hw_rasterizer->InitObjects();
 }
 
-void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
+void RendererOpenGL::ConfigureFramebufferTexture(OpenGLState &state, TextureInfo& texture,
                                                  const GPU::Regs::FramebufferConfig& framebuffer) {
     GPU::Regs::PixelFormat format = framebuffer.color_format;
     GLint internal_format;
@@ -264,7 +281,11 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
         UNIMPLEMENTED();
     }
 
-    glBindTexture(GL_TEXTURE_2D, texture.handle);
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = texture.handle;
+    state.Apply();
+
+    glActiveTexture(GL_TEXTURE0);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
             texture.gl_format, texture.gl_type, nullptr);
 }
@@ -280,8 +301,10 @@ void RendererOpenGL::DrawSingleScreenRotated(const TextureInfo& texture, float x
         ScreenRectVertex(x+w, y+h, 0.f, 1.f),
     };
 
-    glBindTexture(GL_TEXTURE_2D, texture.handle);
-    glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = texture.handle;
+    state.Apply();
+
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices.data());
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
@@ -295,7 +318,8 @@ void RendererOpenGL::DrawScreens() {
     glViewport(0, 0, layout.width, layout.height);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    glUseProgram(program_id);
+    state.draw.shader_program = program_id;
+    state.Apply();
 
     // Set projection matrix
     std::array<GLfloat, 3 * 2> ortho_matrix = MakeOrthographicMatrix((float)layout.width,
@@ -324,6 +348,7 @@ void RendererOpenGL::UpdateFramerate() {
  */
 void RendererOpenGL::SetWindow(EmuWindow* window) {
     render_window = window;
+    hw_rasterizer->SetWindow(window);
 }
 
 /// Initialize the renderer
