@@ -1,6 +1,9 @@
 set(SRCS
             renderer_opengl/generated/gl_3_2_core.c
+            renderer_opengl/gl_rasterizer.cpp
+            renderer_opengl/gl_rasterizer_cache.cpp
             renderer_opengl/renderer_opengl.cpp
+            renderer_opengl/gl_resource_manager.cpp
             renderer_opengl/gl_shader_util.cpp
             debug_utils/debug_utils.cpp
             clipper.cpp
@@ -15,6 +18,10 @@ set(SRCS
 set(HEADERS
             debug_utils/debug_utils.h
             renderer_opengl/generated/gl_3_2_core.h
+            renderer_opengl/gl_pica_to_gl.h
+            renderer_opengl/gl_rasterizer.h
+            renderer_opengl/gl_rasterizer_cache.h
+            renderer_opengl/gl_resource_manager.h
             renderer_opengl/gl_shader_util.h
             renderer_opengl/gl_shaders.h
             renderer_opengl/renderer_opengl.h
@@ -22,11 +29,13 @@ set(HEADERS
             color.h
             command_processor.h
             gpu_debugger.h
+            hwrasterizer_base.h
             math.h
             pica.h
             primitive_assembly.h
             rasterizer.h
             renderer_base.h
+            resource_manager_base.h
             utils.h
             vertex_shader.h
             video_core.h
