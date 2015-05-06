@@ -51,7 +51,7 @@ in vec2 vert_texcoords[3];
 
 out vec4 o[16];
 
-uniform int out_maps[16*4];
+uniform int out_maps[7*4];
 
 void SetVal(int map_idx, float val) {
     o[out_maps[map_idx] / 4][out_maps[map_idx] % 4] = val;
@@ -98,7 +98,7 @@ struct TEV
 
 uniform TEV tevs[6];
 
-uniform int out_maps[16*4];
+uniform int out_maps[7*4];
 
 vec4 g_last_tex_env_out;
 vec4 g_const_color;
