@@ -446,7 +446,7 @@ void RasterizerOpenGL::SyncDrawState() {
     }
 
     // Sync shader output register mapping to hw shader
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < 6; ++i) {
         const auto& output_register_map = Pica::registers.vs_output_attributes[i];
 
         u32 semantics[4] = {
