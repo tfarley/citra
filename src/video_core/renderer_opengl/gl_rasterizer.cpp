@@ -62,11 +62,6 @@ void RasterizerOpenGL::InitObjects() {
 
     uniform_out_maps = glGetUniformLocation(shader_handle, "out_maps");
 
-    // Set the texture samplerts to correspond to different texture units
-    glUniform1i(uniform_tex, 0);
-    glUniform1i(uniform_tex + 1, 1);
-    glUniform1i(uniform_tex + 2, 2);
-
     vertex_buffer_handle = res_mgr->NewBuffer();
 
     // Generate VAO
@@ -78,6 +73,11 @@ void RasterizerOpenGL::InitObjects() {
 
     // Load hardware shader and set attributes
     glUseProgram(shader_handle);
+
+    // Set the texture samplerts to correspond to different texture units
+    glUniform1i(uniform_tex, 0);
+    glUniform1i(uniform_tex + 1, 1);
+    glUniform1i(uniform_tex + 2, 2);
 
     glVertexAttribPointer(attrib_position, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, position));
     glVertexAttribPointer(attrib_color, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, color));
@@ -450,6 +450,7 @@ void RasterizerOpenGL::SyncDrawState() {
     if (Pica::registers.output_merger.alphablend_enable.Value()) {
         glEnable(GL_BLEND);
 
+        // TODO: / 255.0f?
         glBlendColor((GLfloat)Pica::registers.output_merger.blend_const.r.Value(),
                         (GLfloat)Pica::registers.output_merger.blend_const.g.Value(),
                         (GLfloat)Pica::registers.output_merger.blend_const.b.Value(),
@@ -518,9 +519,12 @@ void RasterizerOpenGL::SyncDrawState() {
     for (int i = 0; i < 3; ++i) {
         const auto& texture = pica_textures[i];
 
+        glActiveTexture(GL_TEXTURE0 + i);
         if (texture.enabled) {
-            glActiveTexture(GL_TEXTURE0 + i);
+            glEnable(GL_TEXTURE_2D);
             res_cache.LoadAndBindTexture(texture);
+        } else {
+            glDisable(GL_TEXTURE_2D);
         }
     }
 }
