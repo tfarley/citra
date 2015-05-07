@@ -427,6 +427,9 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.output_size)), params.out_buffer_size);
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.flags)), params.flags);
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.trigger)), 1);
+
+        VideoCore::g_renderer->hwRasterizer->NotifyFlush(true, Memory::VirtualToPhysicalAddress(params.out_buffer_address), params.out_buffer_size);
+
         break;
     }
 
@@ -434,6 +437,10 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
     case CommandId::SET_TEXTURE_COPY:
     {
         auto& params = command.image_copy;
+
+        VideoCore::g_renderer->hwRasterizer->NotifyPreCopy(params.in_buffer_address, params.in_buffer_size,
+                                                           params.out_buffer_address, params.out_buffer_size);
+
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.input_address)),
                 Memory::VirtualToPhysicalAddress(params.in_buffer_address) >> 3);
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(display_transfer_config.output_address)),
