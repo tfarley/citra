@@ -354,6 +354,9 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
 
     // GX request DMA - typically used for copying memory from GSP heap to VRAM
     case CommandId::REQUEST_DMA:
+        VideoCore::g_renderer->hwRasterizer->NotifyPreCopy(command.dma_request.source_address, command.dma_request.size,
+                                                           command.dma_request.dest_address, command.dma_request.size);
+
         memcpy(Memory::GetPointer(command.dma_request.dest_address),
                Memory::GetPointer(command.dma_request.source_address),
                command.dma_request.size);
