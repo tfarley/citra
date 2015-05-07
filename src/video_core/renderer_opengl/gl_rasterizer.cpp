@@ -310,20 +310,20 @@ void RasterizerOpenGL::SyncFramebuffer() {
     u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
     Pica::Regs::DepthFormat new_fb_depth_format = Pica::registers.framebuffer.depth_format;
 
-    
-    bool fb_resized = (fb_color_texture.width != Pica::registers.framebuffer.GetWidth() ||
-                        fb_color_texture.height != Pica::registers.framebuffer.GetHeight());
-    bool fb_format_changed = (fb_color_texture.format != new_fb_color_format ||
-                                fb_depth_texture.format != new_fb_depth_format);
-    bool fb_modified = (last_fb_color_addr != cur_fb_color_addr || last_fb_depth_addr != cur_fb_depth_addr ||
-                        fb_format_changed);
+    bool fb_prop_changed = (fb_color_texture.format != new_fb_color_format ||
+                            fb_depth_texture.format != new_fb_depth_format ||
+                            fb_color_texture.width != Pica::registers.framebuffer.GetWidth() ||
+                            fb_color_texture.height != Pica::registers.framebuffer.GetHeight());
+    bool fb_modified = (last_fb_color_addr != cur_fb_color_addr ||
+                        last_fb_depth_addr != cur_fb_depth_addr ||
+                        fb_prop_changed);
 
-    // Commit if fb modified or changed
+    // Commit if fb modified in any way
     if (fb_modified) {
         CommitFramebuffer();
     }
 
-    if (fb_resized || fb_format_changed) {
+    if (fb_prop_changed) {
         ReconfigColorTexture(fb_color_texture, new_fb_color_format,
                                 Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
 
@@ -351,7 +351,7 @@ void RasterizerOpenGL::SyncFramebuffer() {
         last_fb_color_addr = cur_fb_color_addr;
         last_fb_depth_addr = cur_fb_depth_addr;
 
-        // Currently not needed b/c of reloading buffers below, but will be needed for hw vtx shaders
+        // Currently not needed b/c of reloading buffers below, but will be needed for high-res rendering
         //glDepthMask(GL_TRUE);
         //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
