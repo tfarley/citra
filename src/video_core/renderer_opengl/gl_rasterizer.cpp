@@ -179,8 +179,28 @@ void RasterizerOpenGL::NotifyPreSwapBuffers() {
 void RasterizerOpenGL::NotifyPreCopy(u32 src_addr, u32 src_size, u32 dest_addr, u32 dest_size) {
     render_window->MakeCurrent();
 
-    // TODO: Only need to commit if region intersects framebuffer
-    CommitFramebuffer();
+    u32 cur_fb_color_addr = Pica::PAddrToVAddr(Pica::registers.framebuffer.GetColorBufferPhysicalAddress());
+    u32 cur_fb_color_size = GPU::Regs::BytesPerPixel((GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value())
+                            * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
+
+    u32 cur_fb_depth_addr = Pica::PAddrToVAddr(Pica::registers.framebuffer.GetDepthBufferPhysicalAddress());
+    u32 cur_fb_depth_size = Pica::Regs::BytesPerDepthPixel(Pica::registers.framebuffer.depth_format)
+                            * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
+
+    // If source memory region overlaps 3ds framebuffers, commit them before the copy happens
+    u32 max_lower = std::max(src_addr, cur_fb_color_addr);
+    u32 min_upper = std::min(src_addr + src_size, cur_fb_color_addr + cur_fb_color_size);
+
+    if (max_lower <= min_upper) {
+        CommitFramebuffer();
+    }
+
+    max_lower = std::max(src_addr, cur_fb_depth_addr);
+    min_upper = std::min(src_addr + src_size, cur_fb_depth_addr + cur_fb_depth_size);
+
+    if (max_lower <= min_upper) {
+        CommitFramebuffer();
+    }
 }
 
 /// Notify renderer that memory region has been changed
@@ -189,11 +209,11 @@ void RasterizerOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
 
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
     u32 cur_fb_color_size = GPU::Regs::BytesPerPixel((GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value())
-        * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
+                            * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
 
     u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
     u32 cur_fb_depth_size = Pica::Regs::BytesPerDepthPixel(Pica::registers.framebuffer.depth_format)
-        * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
+                            * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
 
     // If modified memory region overlaps 3ds framebuffers, reload their contents into OpenGL
     u32 max_lower = std::max(addr, cur_fb_color_addr);
