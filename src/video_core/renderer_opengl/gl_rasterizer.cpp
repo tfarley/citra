@@ -573,30 +573,8 @@ void RasterizerOpenGL::ReloadColorBuffer() {
             u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_color_texture.width * bytes_per_pixel;
             u32 ogl_px_idx = x * bytes_per_pixel + y * fb_color_texture.width * bytes_per_pixel;
 
-            switch (fb_color_texture.format) {
-            case GPU::Regs::PixelFormat::RGBA8:
-            {
-                u8* pixel = color_buffer + dst_offset;
-                ogl_img[ogl_px_idx] = pixel[0];
-                ogl_img[ogl_px_idx + 1] = pixel[1];
-                ogl_img[ogl_px_idx + 2] = pixel[2];
-                ogl_img[ogl_px_idx + 3] = pixel[3];
-                break;
-            }
-
-            case GPU::Regs::PixelFormat::RGBA4:
-            {
-                u8* pixel = color_buffer + dst_offset;
-                ogl_img[ogl_px_idx] = pixel[0];
-                ogl_img[ogl_px_idx + 1] = pixel[1];
-                break;
-            }
-
-            default:
-                LOG_CRITICAL(Render_OpenGL, "Unknown memory framebuffer color format %x", fb_color_texture.format);
-                UNIMPLEMENTED();
-                break;
-            }
+            u8* pixel = color_buffer + dst_offset;
+            memcpy(&ogl_img[ogl_px_idx], pixel, bytes_per_pixel);
         }
     }
 
@@ -686,30 +664,8 @@ void RasterizerOpenGL::CommitFramebuffer() {
                     u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_color_texture.width * bytes_per_pixel;
                     u32 ogl_px_idx = x * bytes_per_pixel + y * fb_color_texture.width * bytes_per_pixel;
 
-                    switch (fb_color_texture.format) {
-                    case GPU::Regs::PixelFormat::RGBA8:
-                    {
-                        u8* pixel = color_buffer + dst_offset;
-                        pixel[0] = ogl_img[ogl_px_idx];
-                        pixel[1] = ogl_img[ogl_px_idx + 1];
-                        pixel[2] = ogl_img[ogl_px_idx + 2];
-                        pixel[3] = ogl_img[ogl_px_idx + 3];
-                        break;
-                    }
-
-                    case GPU::Regs::PixelFormat::RGBA4:
-                    {
-                        u8* pixel = color_buffer + dst_offset;
-                        pixel[0] = ogl_img[ogl_px_idx];
-                        pixel[1] = ogl_img[ogl_px_idx + 1];
-                        break;
-                    }
-
-                    default:
-                        LOG_CRITICAL(Render_OpenGL, "Unknown framebuffer color format %x", fb_color_texture.format);
-                        UNIMPLEMENTED();
-                        break;
-                    }
+                    u8* pixel = color_buffer + dst_offset;
+                    memcpy(pixel, &ogl_img[ogl_px_idx], bytes_per_pixel);
                 }
             }
 
