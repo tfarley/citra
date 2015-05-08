@@ -20,9 +20,6 @@ public:
     /// Set the window (context) to draw with
     void SetWindow(EmuWindow* window);
 
-    /// Sets the state to return to for rendering
-    void SetBaseState(GLuint orig_vao);
-
     /// Converts the triangle verts to hardware data format and adds them to the current batch
     void AddTriangle(const Pica::VertexShader::OutputVertex& v0,
                      const Pica::VertexShader::OutputVertex& v1,
@@ -31,22 +28,22 @@ public:
     /// Draw the current batch of triangles
     void DrawTriangles();
 
-    /// Notify renderer that a frame is about to draw
+    /// Notify rasterizer that the 3ds framebuffer will draw to the client window after this notification
     void NotifyPreSwapBuffers();
 
-    /// Notify renderer that a copy is about to happen
-    void NotifyPreCopy(u32 src_addr, u32 src_size, u32 dest_addr, u32 dest_size);
+    /// Notify rasterizer that a copy within 3ds memory will occur after this notification
+    void NotifyPreCopy(u32 src_paddr, u32 size);
 
-    /// Notify renderer that memory region has been changed
-    void NotifyFlush(bool is_phys_addr, u32 addr, u32 size);
+    /// Notify rasterizer that a 3ds memory region has been changed
+    void NotifyFlush(u32 paddr, u32 size);
 
 private:
     /// Structure used for managing texture environment states
-    struct TEVUniforms {
-        GLuint color_src;
-        GLuint alpha_src;
-        GLuint color_mod;
-        GLuint alpha_mod;
+    struct TEVConfigUniforms {
+        GLuint color_sources;
+        GLuint alpha_sources;
+        GLuint color_modifiers;
+        GLuint alpha_modifiers;
         GLuint color_op;
         GLuint alpha_op;
         GLuint const_color;
@@ -98,13 +95,16 @@ private:
         GLfloat tex_coord2[2];
     };
 
+    /// Reconfigure the OpenGL color texture to use the given format and dimensions
     void ReconfigColorTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height);
+
+    /// Reconfigure the OpenGL depth texture to use the given format and dimensions
     void ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height);
 
-    /// Syncs the state and contents of the OpenGL framebuffer with the current PICA framebuffer
+    /// Syncs the state and contents of the OpenGL framebuffer to match the current PICA framebuffer
     void SyncFramebuffer();
 
-    /// Syncs the OpenGL drawing state with the current PICA state
+    /// Syncs the OpenGL drawing state to match the current PICA state
     void SyncDrawState();
 
     /// Saves OpenGL state
@@ -158,7 +158,7 @@ private:
     GLuint uniform_alphatest_func;
     GLuint uniform_alphatest_ref;
     GLuint uniform_tex;
-    TEVUniforms uniform_tevs[6];
+    TEVConfigUniforms uniform_tev_cfgs[6];
     GLuint uniform_out_maps;
     GLuint uniform_tex_envs;
 };

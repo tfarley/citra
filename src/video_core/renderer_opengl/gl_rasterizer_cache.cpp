@@ -60,13 +60,11 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(const Pica::Regs::FullTextureConf
 }
 
 /// Flush any cached resource that touches the flushed region
-void RasterizerCacheOpenGL::NotifyFlush(bool is_phys_addr, u32 addr, u32 size) {
+void RasterizerCacheOpenGL::NotifyFlush(u32 paddr, u32 size) {
     // Flush any texture that falls in the flushed region
     for (auto it = texture_cache.begin(); it != texture_cache.end();) {
-        u32 tex_comparison_addr = is_phys_addr ? it->first : Pica::PAddrToVAddr(it->first);
-
-        u32 max_lower = std::max(addr, tex_comparison_addr);
-        u32 min_upper = std::min(addr + size, tex_comparison_addr + it->second.size);
+        u32 max_lower = std::max(paddr, it->first);
+        u32 min_upper = std::min(paddr + size, it->first + it->second.size);
 
         if (max_lower <= min_upper) {
             res_mgr->DeleteTexture(it->second.handle);

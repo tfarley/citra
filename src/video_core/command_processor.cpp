@@ -35,13 +35,6 @@ static u32 default_attr_write_buffer[3];
 
 Common::Profiling::TimingCategory category_drawing("Drawing");
 
-/// Adds a triangle to the hardware renderer's batch
-void AddHWTriangle(const Pica::VertexShader::OutputVertex& v0,
-                   const Pica::VertexShader::OutputVertex& v1,
-                   const Pica::VertexShader::OutputVertex& v2) {
-    VideoCore::g_renderer->hwRasterizer->AddTriangle(v0, v1, v2);
-}
-
 static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
     if (id >= registers.NumIds())
@@ -194,6 +187,12 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
                 if (Settings::values.use_hw_renderer) {
                     // Send to hardware renderer
+                    static auto AddHWTriangle = [](const Pica::VertexShader::OutputVertex& v0,
+                                                   const Pica::VertexShader::OutputVertex& v1,
+                                                   const Pica::VertexShader::OutputVertex& v2) {
+                        VideoCore::g_renderer->hwRasterizer->AddTriangle(v0, v1, v2);
+                    };
+                    
                     primitive_assembler.SubmitVertex(output, AddHWTriangle);
                 } else {
                     // Send to triangle clipper
