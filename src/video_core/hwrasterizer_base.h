@@ -23,12 +23,12 @@ public:
     /// Draw the current batch of triangles
     virtual void DrawTriangles() = 0;
 
-    /// Notify renderer that a frame is about to draw
+    /// Notify rasterizer that the 3ds framebuffer will draw to the client window after this notification
     virtual void NotifyPreSwapBuffers() = 0;
 
-    /// Notify renderer that a copy is about to happen
-    virtual void NotifyPreCopy(u32 src_addr, u32 src_size, u32 dest_addr, u32 dest_size) = 0;
+    /// Notify rasterizer that a copy within 3ds memory will occur after this notification
+    virtual void NotifyPreCopy(u32 src_paddr, u32 size) = 0;
 
-    /// Notify renderer that memory region has been changed
-    virtual void NotifyFlush(bool is_phys_addr, u32 addr, u32 size) = 0;
+    /// Notify rasterizer that a 3ds memory region has been changed
+    virtual void NotifyFlush(u32 paddr, u32 size) = 0;
 };

@@ -106,6 +106,8 @@ inline void Write(u32 addr, const T data) {
             } else {
                 GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PSC1);
             }
+
+            VideoCore::g_renderer->hwRasterizer->NotifyFlush(config.GetStartAddress(), config.GetEndAddress() - config.GetStartAddress());
         }
         break;
     }
@@ -122,12 +124,17 @@ inline void Write(u32 addr, const T data) {
                 UNIMPLEMENTED();
                 break;
             }
-
+            
             unsigned horizontal_scale = (config.scaling != config.NoScale) ? 2 : 1;
             unsigned vertical_scale = (config.scaling == config.ScaleXY) ? 2 : 1;
 
             u32 output_width = config.output_width / horizontal_scale;
             u32 output_height = config.output_height / vertical_scale;
+
+            u32 input_size = config.input_height.Value() * config.input_width.Value() * GPU::Regs::BytesPerPixel(config.input_format.Value());
+            u32 output_size = output_height * output_width * GPU::Regs::BytesPerPixel(config.output_format.Value());
+
+            VideoCore::g_renderer->hwRasterizer->NotifyPreCopy(config.GetPhysicalInputAddress(), input_size);
 
             if (config.raw_copy) {
                 // Raw copies do not perform color conversion nor tiled->linear / linear->tiled conversions
@@ -142,6 +149,9 @@ inline void Write(u32 addr, const T data) {
                     config.output_format.Value(), config.flags);
 
                 GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PPF);
+
+                VideoCore::g_renderer->hwRasterizer->NotifyFlush(config.GetPhysicalOutputAddress(), output_size);
+
                 break;
             }
 
@@ -247,6 +257,8 @@ inline void Write(u32 addr, const T data) {
                       config.output_format.Value(), config.flags);
 
             GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PPF);
+
+            VideoCore::g_renderer->hwRasterizer->NotifyFlush(config.GetPhysicalOutputAddress(), output_size);
         }
         break;
     }

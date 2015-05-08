@@ -35,7 +35,6 @@ set(HEADERS
             primitive_assembly.h
             rasterizer.h
             renderer_base.h
-            resource_manager_base.h
             utils.h
             vertex_shader.h
             video_core.h

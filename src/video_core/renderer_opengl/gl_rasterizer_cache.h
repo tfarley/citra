@@ -9,19 +9,19 @@
 
 #include <map>
 
-class RasterizerCacheOpenGL {
+class RasterizerCacheOpenGL : NonCopyable {
 public:
 
     RasterizerCacheOpenGL(ResourceManagerOpenGL* res_mgr);
-    virtual ~RasterizerCacheOpenGL();
+    ~RasterizerCacheOpenGL();
 
     /// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
     void LoadAndBindTexture(const Pica::Regs::FullTextureConfig& config);
 
     /// Flush any cached resource that touches the flushed region
-    void NotifyFlush(bool is_phys_addr, u32 addr, u32 size);
+    void NotifyFlush(u32 paddr, u32 size);
 
-    /// Flush all cached resources
+    /// Flush all cached OpenGL resources tracked by this cache manager
     void FullFlush();
 
 private:

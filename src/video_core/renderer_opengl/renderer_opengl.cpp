@@ -60,6 +60,7 @@ RendererOpenGL::RendererOpenGL() {
 
 /// RendererOpenGL destructor
 RendererOpenGL::~RendererOpenGL() {
+    delete hwRasterizer;
 }
 
 /// Swap buffers (render frame)

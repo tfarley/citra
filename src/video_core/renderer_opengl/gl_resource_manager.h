@@ -4,16 +4,17 @@
 
 #pragma once
 
-#include "video_core/resource_manager_base.h"
 #include "video_core/pica.h"
+
+#include "generated/gl_3_2_core.h"
 
 #include <set>
 
-class ResourceManagerOpenGL : public ResourceManagerBase {
+class ResourceManagerOpenGL : NonCopyable {
 public:
 
     ResourceManagerOpenGL();
-    ~ResourceManagerOpenGL() override;
+    ~ResourceManagerOpenGL();
 
     GLuint NewTexture();
     void DeleteTexture(GLuint handle);
