@@ -15,6 +15,24 @@
 
 #include "generated/gl_3_2_core.h"
 
+u32 ColorFormatBytesPerPixel(u32 format) {
+    switch (format) {
+    case Pica::registers.framebuffer.RGBA8:
+        return 4;
+    case Pica::registers.framebuffer.RGB8:
+        return 3;
+    case Pica::registers.framebuffer.RGB5A1:
+    case Pica::registers.framebuffer.RGB565:
+    case Pica::registers.framebuffer.RGBA4:
+        return 2;
+    default:
+        UNIMPLEMENTED();
+        break;
+    }
+
+    return 0;
+}
+
 RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res_mgr), res_cache(res_mgr),
                                                                      did_init(false), needs_state_reinit(true),
                                                                      last_fb_color_addr(-1), last_fb_depth_addr(-1) {
@@ -93,7 +111,7 @@ void RasterizerOpenGL::InitObjects() {
 
     // Create textures for OGL framebuffer that will be rendered to, initially 1x1 to succeed in framebuffer creation
     fb_color_texture.handle = res_mgr->NewTexture();
-    ReconfigColorTexture(fb_color_texture, GPU::Regs::PixelFormat::RGBA8, 1, 1);
+    ReconfigColorTexture(fb_color_texture, Pica::registers.framebuffer.RGBA8, 1, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -181,7 +199,7 @@ void RasterizerOpenGL::NotifyPreCopy(u32 src_paddr, u32 size) {
     render_window->MakeCurrent();
 
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-    u32 cur_fb_color_size = GPU::Regs::BytesPerPixel((GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value())
+    u32 cur_fb_color_size = ColorFormatBytesPerPixel(Pica::registers.framebuffer.color_format.Value())
                             * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
 
     u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
@@ -209,7 +227,7 @@ void RasterizerOpenGL::NotifyFlush(u32 paddr, u32 size) {
     render_window->MakeCurrent();
 
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-    u32 cur_fb_color_size = GPU::Regs::BytesPerPixel((GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value())
+    u32 cur_fb_color_size = ColorFormatBytesPerPixel(Pica::registers.framebuffer.color_format.Value())
                             * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
 
     u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
@@ -236,7 +254,7 @@ void RasterizerOpenGL::NotifyFlush(u32 paddr, u32 size) {
 }
 
 /// Reconfigure the OpenGL color texture to use the given format and dimensions
-void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height) {
+void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, u32 format, u32 width, u32 height) {
     GLint internal_format;
 
     texture.format = format;
@@ -244,13 +262,13 @@ void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, GPU::Regs::Pix
     texture.height = height;
 
     switch (format) {
-    case GPU::Regs::PixelFormat::RGBA8:
+    case Pica::registers.framebuffer.RGBA8:
         internal_format = GL_RGBA;
         texture.gl_format = GL_RGBA;
         texture.gl_type = GL_UNSIGNED_INT_8_8_8_8;
         break;
 
-    case GPU::Regs::PixelFormat::RGB8:
+    case Pica::registers.framebuffer.RGB8:
         // This pixel format uses BGR since GL_UNSIGNED_BYTE specifies byte-order, unlike every
         // specific OpenGL type used in this function using native-endian (that is, little-endian
         // mostly everywhere) for words or half-words.
@@ -260,19 +278,19 @@ void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, GPU::Regs::Pix
         texture.gl_type = GL_UNSIGNED_BYTE;
         break;
 
-    case GPU::Regs::PixelFormat::RGB565:
-        internal_format = GL_RGB;
-        texture.gl_format = GL_RGB;
-        texture.gl_type = GL_UNSIGNED_SHORT_5_6_5;
-        break;
-
-    case GPU::Regs::PixelFormat::RGB5A1:
+    case Pica::registers.framebuffer.RGB5A1:
         internal_format = GL_RGBA;
         texture.gl_format = GL_RGBA;
         texture.gl_type = GL_UNSIGNED_SHORT_5_5_5_1;
         break;
 
-    case GPU::Regs::PixelFormat::RGBA4:
+    case Pica::registers.framebuffer.RGB565:
+        internal_format = GL_RGB;
+        texture.gl_format = GL_RGB;
+        texture.gl_type = GL_UNSIGNED_SHORT_5_6_5;
+        break;
+
+    case Pica::registers.framebuffer.RGBA4:
         internal_format = GL_RGBA;
         texture.gl_format = GL_RGBA;
         texture.gl_type = GL_UNSIGNED_SHORT_4_4_4_4;
@@ -328,7 +346,7 @@ void RasterizerOpenGL::ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Reg
 /// Syncs the state and contents of the OpenGL framebuffer with the current PICA framebuffer
 void RasterizerOpenGL::SyncFramebuffer() {
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-    GPU::Regs::PixelFormat new_fb_color_format = (GPU::Regs::PixelFormat)Pica::registers.framebuffer.color_format.Value();
+    u32 new_fb_color_format = Pica::registers.framebuffer.color_format.Value();
 
     u32 cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
     Pica::Regs::DepthFormat new_fb_depth_format = Pica::registers.framebuffer.depth_format;
@@ -561,7 +579,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
         return;
     }
 
-    u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(fb_color_texture.format);
+    u32 bytes_per_pixel = ColorFormatBytesPerPixel(fb_color_texture.format);
 
     u8* ogl_img = new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel];
 
@@ -648,7 +666,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
         u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_color_addr));
 
         if (color_buffer != nullptr) {
-            u32 bytes_per_pixel = GPU::Regs::BytesPerPixel(fb_color_texture.format);
+            u32 bytes_per_pixel = ColorFormatBytesPerPixel(fb_color_texture.format);
 
             u8* ogl_img = new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel];
 
