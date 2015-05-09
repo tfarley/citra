@@ -54,7 +54,7 @@ private:
         GLuint handle;
         GLsizei width;
         GLsizei height;
-        GPU::Regs::PixelFormat format;
+        u32 format;
         GLenum gl_format;
         GLenum gl_type;
     };
@@ -96,7 +96,7 @@ private:
     };
 
     /// Reconfigure the OpenGL color texture to use the given format and dimensions
-    void ReconfigColorTexture(TextureInfo& texture, GPU::Regs::PixelFormat format, u32 width, u32 height);
+    void ReconfigColorTexture(TextureInfo& texture, u32 format, u32 width, u32 height);
 
     /// Reconfigure the OpenGL depth texture to use the given format and dimensions
     void ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height);
