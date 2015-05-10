@@ -5,6 +5,7 @@ set(SRCS
             renderer_opengl/renderer_opengl.cpp
             renderer_opengl/gl_resource_manager.cpp
             renderer_opengl/gl_shader_util.cpp
+            renderer_opengl/gl_state.cpp
             debug_utils/debug_utils.cpp
             clipper.cpp
             command_processor.cpp
@@ -24,6 +25,7 @@ set(HEADERS
             renderer_opengl/gl_resource_manager.h
             renderer_opengl/gl_shader_util.h
             renderer_opengl/gl_shaders.h
+            renderer_opengl/gl_state.h
             renderer_opengl/renderer_opengl.h
             clipper.h
             color.h
