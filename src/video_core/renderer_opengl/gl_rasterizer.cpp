@@ -560,7 +560,7 @@ void RasterizerOpenGL::SyncDrawState() {
 
 /// Copies the 3ds color framebuffer into the OpenGL color framebuffer texture
 void RasterizerOpenGL::ReloadColorBuffer() {
-    u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_color_addr));
+    u8* color_buffer = Memory::GetPhysicalPointer(last_fb_color_addr);
 
     if (color_buffer == nullptr) {
         return;
@@ -597,7 +597,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
 /// Copies the 3ds depth framebuffer into the OpenGL depth framebuffer texture
 void RasterizerOpenGL::ReloadDepthBuffer() {
     // TODO: Appears to work, but double-check endianness of depth values and order of depth-stencil
-    u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_depth_addr));
+    u8* depth_buffer = Memory::GetPhysicalPointer(last_fb_depth_addr);
 
     if (depth_buffer == nullptr) {
         return;
@@ -657,7 +657,7 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
 void RasterizerOpenGL::CommitFramebuffer() {
     if (last_fb_color_addr != -1)
     {
-        u8* color_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_color_addr));
+        u8* color_buffer = Memory::GetPhysicalPointer(last_fb_color_addr);
 
         if (color_buffer != nullptr) {
             u32 bytes_per_pixel = ColorFormatBytesPerPixel(fb_color_texture.format);
@@ -691,7 +691,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
     if (last_fb_depth_addr != -1)
     {
         // TODO: Seems correct, but doesn't quite match sw renderer output. One of them is wrong.
-        u8* depth_buffer = Memory::GetPointer(Pica::PAddrToVAddr(last_fb_depth_addr));
+        u8* depth_buffer = Memory::GetPhysicalPointer(last_fb_depth_addr);
 
         if (depth_buffer != nullptr) {
             u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(fb_depth_texture.format);

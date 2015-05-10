@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include "core/mem_map.h"
 #include "video_core/renderer_opengl/gl_pica_to_gl.h"
 #include "video_core/renderer_opengl/gl_rasterizer_cache.h"
 #include "video_core/debug_utils/debug_utils.h"
@@ -16,7 +17,7 @@ RasterizerCacheOpenGL::~RasterizerCacheOpenGL() {
 
 /// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
 void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_unit, const Pica::Regs::FullTextureConfig& config) {
-    u32 tex_paddr = config.config.GetPhysicalAddress();
+    PAddr tex_paddr = config.config.GetPhysicalAddress();
 
     auto cached_texture = texture_cache.find(tex_paddr);
 
@@ -49,7 +50,7 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
         {
             for (int j = 0; j < info.height; j++)
             {
-                rgba_tex[i + info.width * j] = Pica::DebugUtils::LookupTexture(Memory::GetPointer(Pica::PAddrToVAddr(tex_paddr)), i, info.height - 1 - j, info);
+                rgba_tex[i + info.width * j] = Pica::DebugUtils::LookupTexture(Memory::GetPhysicalPointer(tex_paddr), i, info.height - 1 - j, info);
             }
         }
 

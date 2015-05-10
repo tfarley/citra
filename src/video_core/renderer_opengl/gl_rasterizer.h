@@ -133,8 +133,8 @@ private:
     bool did_init;
     OpenGLState state;
 
-    u32 last_fb_color_addr;
-    u32 last_fb_depth_addr;
+    PAddr last_fb_color_addr;
+    PAddr last_fb_depth_addr;
 
     // Hardware rasterizer
     TextureInfo fb_color_texture;
