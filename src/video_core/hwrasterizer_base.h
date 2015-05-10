@@ -9,6 +9,9 @@
 
 class HWRasterizer {
 public:
+    virtual ~HWRasterizer() {
+    }
+
     /// Initialize API-specific GPU objects
     virtual void InitObjects() = 0;
 

@@ -8,12 +8,11 @@
 #include "gl_resource_manager.h"
 #include "video_core/pica.h"
 
+#include <memory>
 #include <map>
 
 class RasterizerCacheOpenGL : NonCopyable {
 public:
-
-    RasterizerCacheOpenGL(ResourceManagerOpenGL* res_mgr);
     ~RasterizerCacheOpenGL();
 
     /// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
@@ -27,13 +26,11 @@ public:
 
 private:
     struct CachedTexture {
-        GLuint handle;
+        OGLTexture texture;
         GLuint width;
         GLuint height;
         u32 size;
     };
 
-    ResourceManagerOpenGL* res_mgr;
-
-    std::map<u32, CachedTexture> texture_cache;
+    std::map<u32, std::shared_ptr<CachedTexture>> texture_cache;
 };

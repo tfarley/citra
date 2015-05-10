@@ -12,28 +12,28 @@
 class RasterizerOpenGL : public HWRasterizer {
 public:
 
-    RasterizerOpenGL(ResourceManagerOpenGL* res_mgr);
-    ~RasterizerOpenGL();
+    RasterizerOpenGL();
+    ~RasterizerOpenGL() override;
 
     /// Initialize API-specific GPU objects
-    void InitObjects();
+    void InitObjects() override;
 
     /// Set the window (context) to draw with
-    void SetWindow(EmuWindow* window);
+    void SetWindow(EmuWindow* window) override;
 
     /// Converts the triangle verts to hardware data format and adds them to the current batch
     void AddTriangle(const Pica::VertexShader::OutputVertex& v0,
                      const Pica::VertexShader::OutputVertex& v1,
-                     const Pica::VertexShader::OutputVertex& v2);
+                     const Pica::VertexShader::OutputVertex& v2) override;
 
     /// Draw the current batch of triangles
-    void DrawTriangles();
+    void DrawTriangles() override;
 
     /// Notify rasterizer that a copy within 3ds memory will occur after this notification
-    void NotifyPreCopy(u32 src_paddr, u32 size);
+    void NotifyPreCopy(u32 src_paddr, u32 size) override;
 
     /// Notify rasterizer that a 3ds memory region has been changed
-    void NotifyFlush(u32 paddr, u32 size);
+    void NotifyFlush(u32 paddr, u32 size) override;
 
 private:
     /// Structure used for managing texture environment states
@@ -49,7 +49,7 @@ private:
 
     /// Structure used for storing information about color textures
     struct TextureInfo {
-        GLuint handle;
+        OGLTexture texture;
         GLsizei width;
         GLsizei height;
         u32 format;
@@ -59,7 +59,7 @@ private:
 
     /// Structure used for storing information about depth textures
     struct DepthTextureInfo {
-        GLuint handle;
+        OGLTexture texture;
         GLsizei width;
         GLsizei height;
         Pica::Regs::DepthFormat format;
@@ -125,12 +125,10 @@ private:
     void CommitFramebuffer();
 
     EmuWindow* render_window;
-    ResourceManagerOpenGL* res_mgr;
     RasterizerCacheOpenGL res_cache;
 
     std::vector<HardwareVertex> vertex_batch;
 
-    bool did_init;
     OpenGLState state;
 
     PAddr last_fb_color_addr;
@@ -139,10 +137,10 @@ private:
     // Hardware rasterizer
     TextureInfo fb_color_texture;
     DepthTextureInfo fb_depth_texture;
-    GLuint shader_handle;
-    GLuint vertex_array_handle;
-    GLuint vertex_buffer_handle;
-    GLuint framebuffer_handle;
+    OGLShader shader;
+    OGLVertexArray vertex_array;
+    OGLBuffer vertex_buffer;
+    OGLFramebuffer framebuffer;
 
     // Hardware vertex shader
     GLuint attrib_position;

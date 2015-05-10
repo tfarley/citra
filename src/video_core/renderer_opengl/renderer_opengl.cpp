@@ -53,7 +53,7 @@ static std::array<GLfloat, 3*2> MakeOrthographicMatrix(const float width, const 
 
 /// RendererOpenGL constructor
 RendererOpenGL::RendererOpenGL() {
-    hwRasterizer = new RasterizerOpenGL(new ResourceManagerOpenGL());
+    hwRasterizer = new RasterizerOpenGL();
     resolution_width  = std::max(VideoCore::kScreenTopWidth, VideoCore::kScreenBottomWidth);
     resolution_height = VideoCore::kScreenTopHeight + VideoCore::kScreenBottomHeight;
 }

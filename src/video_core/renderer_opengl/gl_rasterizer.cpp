@@ -33,61 +33,52 @@ u32 ColorFormatBytesPerPixel(u32 format) {
     return 0;
 }
 
-RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res_mgr), res_cache(res_mgr),
-                                                                     did_init(false),
-                                                                     last_fb_color_addr(-1), last_fb_depth_addr(-1) {
+RasterizerOpenGL::RasterizerOpenGL() : last_fb_color_addr(-1), last_fb_depth_addr(-1) {
 
 }
 
 RasterizerOpenGL::~RasterizerOpenGL() {
-    if (did_init) {
-        res_mgr->DeleteBuffer(vertex_buffer_handle);
-        res_mgr->DeleteVAO(vertex_array_handle);
-
-        res_mgr->DeleteFramebuffer(framebuffer_handle);
-
-        res_mgr->DeleteTexture(fb_color_texture.handle);
-        res_mgr->DeleteTexture(fb_depth_texture.handle);
-    }
+    // For automatic resource destruction
+    render_window->MakeCurrent();
 }
 
 void RasterizerOpenGL::InitObjects() {
     OpenGLState prev_state = OpenGLState::GetCurState();
 
     // Create the hardware shader program and get attrib/uniform locations
-    shader_handle = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
-    attrib_position = glGetAttribLocation(shader_handle, "vert_position");
-    attrib_color = glGetAttribLocation(shader_handle, "vert_color");
-    attrib_texcoords = glGetAttribLocation(shader_handle, "vert_texcoords");
+    shader.Create(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
+    attrib_position = shader.GetAttribLocation("vert_position");
+    attrib_color = shader.GetAttribLocation("vert_color");
+    attrib_texcoords = shader.GetAttribLocation("vert_texcoords");
 
-    uniform_alphatest_func = glGetUniformLocation(shader_handle, "alphatest_func");
-    uniform_alphatest_ref = glGetUniformLocation(shader_handle, "alphatest_ref");
+    uniform_alphatest_func = shader.GetUniformLocation("alphatest_func");
+    uniform_alphatest_ref = shader.GetUniformLocation("alphatest_ref");
 
-    uniform_tex = glGetUniformLocation(shader_handle, "tex");
+    uniform_tex = shader.GetUniformLocation("tex");
 
     for (int i = 0; i < 6; i++) {
         auto& uniform_tev = uniform_tev_cfgs[i];
 
         std::string tev_ref_str = "tev_cfgs[" + std::to_string(i) + "]";
-        uniform_tev.color_sources = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_sources").c_str());
-        uniform_tev.alpha_sources = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_sources").c_str());
-        uniform_tev.color_modifiers = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_modifiers").c_str());
-        uniform_tev.alpha_modifiers = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_modifiers").c_str());
-        uniform_tev.color_op = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_op").c_str());
-        uniform_tev.alpha_op = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_op").c_str());
-        uniform_tev.const_color = glGetUniformLocation(shader_handle, (tev_ref_str + ".const_color").c_str());
+        uniform_tev.color_sources = shader.GetUniformLocation((tev_ref_str + ".color_sources").c_str());
+        uniform_tev.alpha_sources = shader.GetUniformLocation((tev_ref_str + ".alpha_sources").c_str());
+        uniform_tev.color_modifiers = shader.GetUniformLocation((tev_ref_str + ".color_modifiers").c_str());
+        uniform_tev.alpha_modifiers = shader.GetUniformLocation((tev_ref_str + ".alpha_modifiers").c_str());
+        uniform_tev.color_op = shader.GetUniformLocation((tev_ref_str + ".color_op").c_str());
+        uniform_tev.alpha_op = shader.GetUniformLocation((tev_ref_str + ".alpha_op").c_str());
+        uniform_tev.const_color = shader.GetUniformLocation((tev_ref_str + ".const_color").c_str());
     }
 
-    uniform_out_maps = glGetUniformLocation(shader_handle, "out_maps");
+    uniform_out_maps = shader.GetUniformLocation("out_maps");
 
     // Generate VBO and VAO
-    vertex_buffer_handle = res_mgr->NewBuffer();
-    vertex_array_handle = res_mgr->NewVAO();
+    vertex_buffer.Create();
+    vertex_array.Create();
 
     // Update OpenGL state
-    state.draw.vertex_array = vertex_array_handle;
-    state.draw.vertex_buffer = vertex_buffer_handle;
-    state.draw.shader_program = shader_handle;
+    state.draw.vertex_array = vertex_array.GetHandle();
+    state.draw.vertex_buffer = vertex_buffer.GetHandle();
+    state.draw.shader_program = shader.GetHandle();
 
     for (int i = 0; i < 3; i++) {
         state.texture_unit[i].enabled_2d = true;
@@ -113,7 +104,7 @@ void RasterizerOpenGL::InitObjects() {
     glEnableVertexAttribArray(attrib_texcoords + 2);
 
     // Create textures for OGL framebuffer that will be rendered to, initially 1x1 to succeed in framebuffer creation
-    fb_color_texture.handle = res_mgr->NewTexture();
+    fb_color_texture.texture.Create();
     ReconfigColorTexture(fb_color_texture, Pica::registers.framebuffer.RGBA8, 1, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -121,7 +112,7 @@ void RasterizerOpenGL::InitObjects() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    fb_depth_texture.handle = res_mgr->NewTexture();
+    fb_depth_texture.texture.Create();
     ReconfigDepthTexture(fb_depth_texture, Pica::Regs::DepthFormat::D16, 1, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -132,16 +123,16 @@ void RasterizerOpenGL::InitObjects() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
 
     // Configure OpenGL framebuffer
-    framebuffer_handle = res_mgr->NewFramebuffer();
+    framebuffer.Create();
 
-    state.draw.framebuffer = framebuffer_handle;
+    state.draw.framebuffer = framebuffer.GetHandle();
     state.texture_unit[0].enabled_2d = true;
     state.texture_unit[0].texture_2d = 0;
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb_color_texture.handle, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.handle, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb_color_texture.texture.GetHandle(), 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.texture.GetHandle(), 0);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
@@ -149,8 +140,6 @@ void RasterizerOpenGL::InitObjects() {
 
     // Return to the previous OpenGL state
     prev_state.Apply();
-
-    did_init = true;
 }
 
 /// Set the window (context) to draw with
@@ -303,7 +292,7 @@ void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, u32 format, u3
     }
 
     state.texture_unit[0].enabled_2d = true;
-    state.texture_unit[0].texture_2d = texture.handle;
+    state.texture_unit[0].texture_2d = texture.texture.GetHandle();
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);
@@ -344,7 +333,7 @@ void RasterizerOpenGL::ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Reg
     }
 
     state.texture_unit[0].enabled_2d = true;
-    state.texture_unit[0].texture_2d = texture.handle;
+    state.texture_unit[0].texture_2d = texture.texture.GetHandle();
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);
@@ -388,7 +377,7 @@ void RasterizerOpenGL::SyncFramebuffer() {
             break;
 
         case Pica::Regs::DepthFormat::D24S8:
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.handle, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.texture.GetHandle(), 0);
             break;
 
         default:
@@ -585,7 +574,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
     }
 
     state.texture_unit[0].enabled_2d = true;
-    state.texture_unit[0].texture_2d = fb_color_texture.handle;
+    state.texture_unit[0].texture_2d = fb_color_texture.texture.GetHandle();
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);
@@ -640,7 +629,7 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
     }
 
     state.texture_unit[0].enabled_2d = true;
-    state.texture_unit[0].texture_2d = fb_depth_texture.handle;
+    state.texture_unit[0].texture_2d = fb_depth_texture.texture.GetHandle();
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);
@@ -665,7 +654,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
             u8* ogl_img = new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel];
 
             state.texture_unit[0].enabled_2d = true;
-            state.texture_unit[0].texture_2d = fb_color_texture.handle;
+            state.texture_unit[0].texture_2d = fb_color_texture.texture.GetHandle();
             state.Apply();
 
             glActiveTexture(GL_TEXTURE0);
@@ -702,7 +691,7 @@ void RasterizerOpenGL::CommitFramebuffer() {
             u8* ogl_img = new u8[fb_depth_texture.width * fb_depth_texture.height * ogl_bpp];
 
             state.texture_unit[0].enabled_2d = true;
-            state.texture_unit[0].texture_2d = fb_depth_texture.handle;
+            state.texture_unit[0].texture_2d = fb_depth_texture.texture.GetHandle();
             state.Apply();
 
             glActiveTexture(GL_TEXTURE0);

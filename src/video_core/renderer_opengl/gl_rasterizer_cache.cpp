@@ -8,9 +8,6 @@
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/math.h"
 
-RasterizerCacheOpenGL::RasterizerCacheOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res_mgr) {
-}
-
 RasterizerCacheOpenGL::~RasterizerCacheOpenGL() {
     FullFlush();
 }
@@ -22,13 +19,13 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
     auto cached_texture = texture_cache.find(tex_paddr);
 
     if (cached_texture != texture_cache.end()) {
-        state.texture_unit[texture_unit].texture_2d = cached_texture->second.handle;
+        state.texture_unit[texture_unit].texture_2d = cached_texture->second->texture.GetHandle();
         state.Apply();
     } else {
-        CachedTexture new_texture;
+        std::shared_ptr<CachedTexture> new_texture(new CachedTexture());
 
-        new_texture.handle = res_mgr->NewTexture();
-        state.texture_unit[texture_unit].texture_2d = new_texture.handle;
+        new_texture->texture.Create();
+        state.texture_unit[texture_unit].texture_2d = new_texture->texture.GetHandle();
         state.Apply();
 
         // TODO: Need to choose filters that correspond to PICA once register is declared
@@ -40,9 +37,9 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
 
         auto info = Pica::DebugUtils::TextureInfo::FromPicaRegister(config.config, config.format);
 
-        new_texture.width = info.width;
-        new_texture.height = info.height;
-        new_texture.size = info.width * info.height * Pica::Regs::NibblesPerPixel(info.format);
+        new_texture->width = info.width;
+        new_texture->height = info.height;
+        new_texture->size = info.width * info.height * Pica::Regs::NibblesPerPixel(info.format);
 
         Math::Vec4<u8>* rgba_tex = new Math::Vec4<u8>[info.width * info.height];
 
@@ -67,10 +64,9 @@ void RasterizerCacheOpenGL::NotifyFlush(u32 paddr, u32 size) {
     // Flush any texture that falls in the flushed region
     for (auto it = texture_cache.begin(); it != texture_cache.end();) {
         u32 max_lower = std::max(paddr, it->first);
-        u32 min_upper = std::min(paddr + size, it->first + it->second.size);
+        u32 min_upper = std::min(paddr + size, it->first + it->second->size);
 
         if (max_lower <= min_upper) {
-            res_mgr->DeleteTexture(it->second.handle);
             it = texture_cache.erase(it);
         } else {
             ++it;
@@ -80,7 +76,7 @@ void RasterizerCacheOpenGL::NotifyFlush(u32 paddr, u32 size) {
 
 /// Flush all cached resources
 void RasterizerCacheOpenGL::FullFlush() {
-    for (auto texture : texture_cache) {
-        res_mgr->DeleteTexture(texture.second.handle);
+    for (auto it = texture_cache.begin(); it != texture_cache.end();) {
+        it = texture_cache.erase(it);
     }
 }
