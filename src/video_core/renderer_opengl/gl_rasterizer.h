@@ -6,6 +6,7 @@
 
 #include "video_core/hwrasterizer_base.h"
 
+#include "gl_state.h"
 #include "gl_rasterizer_cache.h"
 
 class RasterizerOpenGL : public HWRasterizer {
@@ -27,9 +28,6 @@ public:
 
     /// Draw the current batch of triangles
     void DrawTriangles();
-
-    /// Notify rasterizer that the 3ds framebuffer will draw to the client window after this notification
-    void NotifyPreSwapBuffers();
 
     /// Notify rasterizer that a copy within 3ds memory will occur after this notification
     void NotifyPreCopy(u32 src_paddr, u32 size);
@@ -133,10 +131,7 @@ private:
     std::vector<HardwareVertex> vertex_batch;
 
     bool did_init;
-    bool needs_state_reinit;
-
-    GLuint old_vao;
-    GLuint old_shader;
+    OpenGLState state;
 
     u32 last_fb_color_addr;
     u32 last_fb_depth_addr;

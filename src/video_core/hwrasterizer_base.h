@@ -23,9 +23,6 @@ public:
     /// Draw the current batch of triangles
     virtual void DrawTriangles() = 0;
 
-    /// Notify rasterizer that the 3ds framebuffer will draw to the client window after this notification
-    virtual void NotifyPreSwapBuffers() = 0;
-
     /// Notify rasterizer that a copy within 3ds memory will occur after this notification
     virtual void NotifyPreCopy(u32 src_paddr, u32 size) = 0;
 

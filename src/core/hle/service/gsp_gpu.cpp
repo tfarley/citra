@@ -379,6 +379,7 @@ static void ExecuteCommand(const Command& command, u32 thread_id) {
 
         // TODO: Not sure if we are supposed to always write this .. seems to trigger processing though
         WriteGPURegister(static_cast<u32>(GPU_REG_INDEX(command_processor_config.trigger)), 1);
+
         break;
     }
 

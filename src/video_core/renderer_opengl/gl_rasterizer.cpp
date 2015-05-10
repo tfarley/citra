@@ -34,7 +34,7 @@ u32 ColorFormatBytesPerPixel(u32 format) {
 }
 
 RasterizerOpenGL::RasterizerOpenGL(ResourceManagerOpenGL* res_mgr) : res_mgr(res_mgr), res_cache(res_mgr),
-                                                                     did_init(false), needs_state_reinit(true),
+                                                                     did_init(false),
                                                                      last_fb_color_addr(-1), last_fb_depth_addr(-1) {
 
 }
@@ -52,7 +52,7 @@ RasterizerOpenGL::~RasterizerOpenGL() {
 }
 
 void RasterizerOpenGL::InitObjects() {
-    SaveRendererState();
+    OpenGLState prev_state = OpenGLState::GetCurState();
 
     // Create the hardware shader program and get attrib/uniform locations
     shader_handle = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
@@ -80,17 +80,20 @@ void RasterizerOpenGL::InitObjects() {
 
     uniform_out_maps = glGetUniformLocation(shader_handle, "out_maps");
 
+    // Generate VBO and VAO
     vertex_buffer_handle = res_mgr->NewBuffer();
-
-    // Generate VAO
     vertex_array_handle = res_mgr->NewVAO();
-    glBindVertexArray(vertex_array_handle);
 
-    // Attach vertex data to VAO
-    glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
+    // Update OpenGL state
+    state.draw.vertex_array = vertex_array_handle;
+    state.draw.vertex_buffer = vertex_buffer_handle;
+    state.draw.shader_program = shader_handle;
 
-    // Load hardware shader
-    glUseProgram(shader_handle);
+    for (int i = 0; i < 3; i++) {
+        state.texture_unit[i].enabled_2d = true;
+    }
+
+    state.Apply();
 
     // Set the texture samplers to correspond to different texture units
     glUniform1i(uniform_tex, 0);
@@ -128,12 +131,15 @@ void RasterizerOpenGL::InitObjects() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
 
-    glBindTexture(GL_TEXTURE_2D, 0);
-
+    // Configure OpenGL framebuffer
     framebuffer_handle = res_mgr->NewFramebuffer();
 
-    // Configure OpenGL framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_handle);
+    state.draw.framebuffer = framebuffer_handle;
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = 0;
+    state.Apply();
+
+    glActiveTexture(GL_TEXTURE0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb_color_texture.handle, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.handle, 0);
 
@@ -141,7 +147,8 @@ void RasterizerOpenGL::InitObjects() {
         LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
     }
 
-    RestoreRendererState();
+    // Return to the previous OpenGL state
+    prev_state.Apply();
 
     did_init = true;
 }
@@ -164,39 +171,26 @@ void RasterizerOpenGL::AddTriangle(const Pica::VertexShader::OutputVertex& v0,
 void RasterizerOpenGL::DrawTriangles() {
     render_window->MakeCurrent();
 
-    // Check if an outside part of the renderer has modified the state
-    // Set when renderer actually draws textures to screen
-    if (needs_state_reinit) {
-        SaveRendererState();
-
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_handle);
-        glBindVertexArray(vertex_array_handle);
-        glUseProgram(shader_handle);
-
-        needs_state_reinit = false;
-    }
+    OpenGLState prev_state = OpenGLState::GetCurState();
+    state.Apply();
 
     SyncFramebuffer();
     SyncDrawState();
 
-    glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
     glBufferData(GL_ARRAY_BUFFER, vertex_batch.size() * sizeof(HardwareVertex), vertex_batch.data(), GL_STREAM_DRAW);
-
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertex_batch.size());
 
     vertex_batch.clear();
-}
 
-/// Notify renderer that a frame is about to draw
-void RasterizerOpenGL::NotifyPreSwapBuffers() {
-    render_window->MakeCurrent();
-
-    RestoreRendererState();
+    prev_state.Apply();
 }
 
 /// Notify renderer that a copy is about to happen
 void RasterizerOpenGL::NotifyPreCopy(u32 src_paddr, u32 size) {
     render_window->MakeCurrent();
+
+    OpenGLState prev_state = OpenGLState::GetCurState();
+    state.Apply();
 
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
     u32 cur_fb_color_size = ColorFormatBytesPerPixel(Pica::registers.framebuffer.color_format.Value())
@@ -220,11 +214,16 @@ void RasterizerOpenGL::NotifyPreCopy(u32 src_paddr, u32 size) {
     if (max_lower <= min_upper) {
         CommitFramebuffer();
     }
+
+    prev_state.Apply();
 }
 
 /// Notify renderer that memory region has been changed
 void RasterizerOpenGL::NotifyFlush(u32 paddr, u32 size) {
     render_window->MakeCurrent();
+
+    OpenGLState prev_state = OpenGLState::GetCurState();
+    state.Apply();
 
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
     u32 cur_fb_color_size = ColorFormatBytesPerPixel(Pica::registers.framebuffer.color_format.Value())
@@ -251,6 +250,8 @@ void RasterizerOpenGL::NotifyFlush(u32 paddr, u32 size) {
 
     // Notify cache of flush in case the region touches a cached texture
     res_cache.NotifyFlush(paddr, size);
+
+    prev_state.Apply();
 }
 
 /// Reconfigure the OpenGL color texture to use the given format and dimensions
@@ -301,7 +302,11 @@ void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, u32 format, u3
         break;
     }
 
-    glBindTexture(GL_TEXTURE_2D, texture.handle);
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = texture.handle;
+    state.Apply();
+
+    glActiveTexture(GL_TEXTURE0);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
         texture.gl_format, texture.gl_type, nullptr);
 }
@@ -338,7 +343,11 @@ void RasterizerOpenGL::ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Reg
         break;
     }
 
-    glBindTexture(GL_TEXTURE_2D, texture.handle);
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = texture.handle;
+    state.Apply();
+
+    glActiveTexture(GL_TEXTURE0);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
         texture.gl_format, texture.gl_type, nullptr);
 }
@@ -416,17 +425,17 @@ void RasterizerOpenGL::SyncDrawState() {
     // Sync the cull mode
     switch (Pica::registers.cull_mode.Value()) {
     case Pica::Regs::CullMode::KeepAll:
-        glDisable(GL_CULL_FACE);
+        state.cull.enabled = false;
         break;
 
     case Pica::Regs::CullMode::KeepClockWise:
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
+        state.cull.enabled = true;
+        state.cull.mode = GL_BACK;
         break;
 
     case Pica::Regs::CullMode::KeepCounterClockWise:
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_FRONT);
+        state.cull.enabled = true;
+        state.cull.mode = GL_FRONT;
         break;
 
     default:
@@ -436,56 +445,70 @@ void RasterizerOpenGL::SyncDrawState() {
 
     // Sync depth test
     if (Pica::registers.output_merger.depth_test_enable.Value()) {
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(PicaToGL::CompareFunc(Pica::registers.output_merger.depth_test_func.Value()));
+        state.depth.test_enabled = true;
+        state.depth.test_func = PicaToGL::CompareFunc(Pica::registers.output_merger.depth_test_func.Value());
     } else {
-        glDisable(GL_DEPTH_TEST);
+        state.depth.test_enabled = false;
     }
 
     // Sync depth writing
     if (Pica::registers.output_merger.depth_write_enable.Value()) {
-        glDepthMask(GL_TRUE);
+        state.depth.write_mask = GL_TRUE;
     } else {
-        glDepthMask(GL_FALSE);
+        state.depth.write_mask = GL_FALSE;
     }
 
     // TODO: Untested, make sure stencil_reference_value refers to this mask
     // Sync stencil test
     if (Pica::registers.output_merger.stencil_test.stencil_test_enable.Value()) {
-        glEnable(GL_STENCIL_TEST);
-        glStencilFunc(PicaToGL::CompareFunc(Pica::registers.output_merger.stencil_test.stencil_test_func.Value()),
-                        Pica::registers.output_merger.stencil_test.stencil_reference_value.Value(),
-                        Pica::registers.output_merger.stencil_test.stencil_replacement_value.Value());
+        state.stencil.test_enabled = true;
+        state.stencil.test_func = PicaToGL::CompareFunc(Pica::registers.output_merger.stencil_test.stencil_test_func.Value());
+        state.stencil.test_ref = Pica::registers.output_merger.stencil_test.stencil_reference_value.Value();
+        state.stencil.test_mask = Pica::registers.output_merger.stencil_test.stencil_replacement_value.Value();
     }
     else {
-        glDisable(GL_STENCIL_TEST);
+        state.stencil.test_enabled = false;
     }
 
     // TODO: Untested, make sure stencil_mask refers to this mask
     // Sync stencil writing
-    glStencilMask(Pica::registers.output_merger.stencil_test.stencil_mask.Value());
+    state.stencil.write_mask = Pica::registers.output_merger.stencil_test.stencil_mask.Value();
 
     // TODO: Need to sync glStencilOp() once corresponding PICA registers are discovered
 
     // Sync blend state
     if (Pica::registers.output_merger.alphablend_enable.Value()) {
-        glEnable(GL_BLEND);
+        state.blend.enabled = true;
 
-        // TODO: / 255.0f?
-        glBlendColor((GLfloat)Pica::registers.output_merger.blend_const.r.Value(),
-                        (GLfloat)Pica::registers.output_merger.blend_const.g.Value(),
-                        (GLfloat)Pica::registers.output_merger.blend_const.b.Value(),
-                        (GLfloat)Pica::registers.output_merger.blend_const.a.Value());
+        state.blend.color.red = (GLclampf)Pica::registers.output_merger.blend_const.r.Value() / 255.0f;
+        state.blend.color.green = (GLclampf)Pica::registers.output_merger.blend_const.g.Value() / 255.0f;
+        state.blend.color.blue = (GLclampf)Pica::registers.output_merger.blend_const.b.Value() / 255.0f;
+        state.blend.color.alpha = (GLclampf)Pica::registers.output_merger.blend_const.a.Value() / 255.0f;
 
-        GLenum src_blend_rgb = PicaToGL::BlendFactor(Pica::registers.output_merger.alpha_blending.factor_source_rgb.Value());
-        GLenum dst_blend_rgb = PicaToGL::BlendFactor(Pica::registers.output_merger.alpha_blending.factor_dest_rgb.Value());
-        GLenum src_blend_a = PicaToGL::BlendFactor(Pica::registers.output_merger.alpha_blending.factor_source_a.Value());
-        GLenum dst_blend_a = PicaToGL::BlendFactor(Pica::registers.output_merger.alpha_blending.factor_dest_a.Value());
-
-        glBlendFuncSeparate(src_blend_rgb, dst_blend_rgb, src_blend_a, dst_blend_a);
+        state.blend.src_rgb_func = PicaToGL::BlendFunc(Pica::registers.output_merger.alpha_blending.factor_source_rgb.Value());
+        state.blend.dst_rgb_func = PicaToGL::BlendFunc(Pica::registers.output_merger.alpha_blending.factor_dest_rgb.Value());
+        state.blend.src_a_func = PicaToGL::BlendFunc(Pica::registers.output_merger.alpha_blending.factor_source_a.Value());
+        state.blend.dst_a_func = PicaToGL::BlendFunc(Pica::registers.output_merger.alpha_blending.factor_dest_a.Value());
     } else {
-        glDisable(GL_BLEND);
+        state.blend.enabled = false;
     }
+
+    // Bind necessary texture(s), upload if uncached
+    auto pica_textures = Pica::registers.GetTextures();
+
+    for (int i = 0; i < 3; ++i) {
+        const auto& texture = pica_textures[i];
+
+        if (texture.enabled) {
+            state.texture_unit[i].enabled_2d = true;
+            res_cache.LoadAndBindTexture(state, i, texture);
+        }
+        else {
+            state.texture_unit[i].enabled_2d = false;
+        }
+    }
+
+    state.Apply();
 
     // Sync shader output register mapping to hw shader
     for (int i = 0; i < 6; ++i) {
@@ -496,7 +519,7 @@ void RasterizerOpenGL::SyncDrawState() {
             output_register_map.map_z.Value(), output_register_map.map_w.Value()
         };
 
-        // TODO: Might only need to do this once per shader?
+        // TODO: Might only need to do this once per shader? Not sure when/if out maps are modified.
         for (int comp = 0; comp < 4; ++comp) {
             glUniform1i(uniform_out_maps + semantics[comp], 4 * i + comp);
         }
@@ -533,42 +556,6 @@ void RasterizerOpenGL::SyncDrawState() {
     } else {
         glUniform1i(uniform_alphatest_func, 1);
     }
-
-    // Bind necessary texture(s), upload if uncached
-    auto pica_textures = Pica::registers.GetTextures();
-
-    for (int i = 0; i < 3; ++i) {
-        const auto& texture = pica_textures[i];
-
-        glActiveTexture(GL_TEXTURE0 + i);
-        if (texture.enabled) {
-            glEnable(GL_TEXTURE_2D);
-            res_cache.LoadAndBindTexture(texture);
-        } else {
-            glDisable(GL_TEXTURE_2D);
-        }
-    }
-}
-
-/// Saves OpenGL state
-void RasterizerOpenGL::SaveRendererState() {
-    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, (GLint *)&old_vao);
-    glGetIntegerv(GL_CURRENT_PROGRAM, (GLint *)&old_shader);
-}
-
-/// Restores state so renderer can draw textures to screen
-void RasterizerOpenGL::RestoreRendererState() {
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_STENCIL_TEST);
-    glDisable(GL_BLEND);
-    glActiveTexture(GL_TEXTURE0);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(old_vao);
-    glUseProgram(old_shader);
-
-    needs_state_reinit = true;
 }
 
 /// Copies the 3ds color framebuffer into the OpenGL color framebuffer texture
@@ -583,6 +570,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
 
     u8* ogl_img = new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel];
 
+    // TODO: Evaluate whether u16/memcpy/u32 is faster for 2/3/4 bpp versus memcpy for all
     for (int x = 0; x < fb_color_texture.width; ++x)
     {
         for (int y = 0; y < fb_color_texture.height; ++y)
@@ -596,9 +584,12 @@ void RasterizerOpenGL::ReloadColorBuffer() {
         }
     }
 
-    glBindTexture(GL_TEXTURE_2D, fb_color_texture.handle);
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = fb_color_texture.handle;
+    state.Apply();
+
+    glActiveTexture(GL_TEXTURE0);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_color_texture.width, fb_color_texture.height, fb_color_texture.gl_format, fb_color_texture.gl_type, ogl_img);
-    glBindTexture(GL_TEXTURE_2D, 0);
 
     delete[] ogl_img;
 }
@@ -648,9 +639,12 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
         }
     }
 
-    glBindTexture(GL_TEXTURE_2D, fb_depth_texture.handle);
+    state.texture_unit[0].enabled_2d = true;
+    state.texture_unit[0].texture_2d = fb_depth_texture.handle;
+    state.Apply();
+
+    glActiveTexture(GL_TEXTURE0);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_depth_texture.width, fb_depth_texture.height, fb_depth_texture.gl_format, fb_depth_texture.gl_type, ogl_img);
-    glBindTexture(GL_TEXTURE_2D, 0);
 
     delete[] ogl_img;
 }
@@ -670,9 +664,12 @@ void RasterizerOpenGL::CommitFramebuffer() {
 
             u8* ogl_img = new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel];
 
-            glBindTexture(GL_TEXTURE_2D, fb_color_texture.handle);
+            state.texture_unit[0].enabled_2d = true;
+            state.texture_unit[0].texture_2d = fb_color_texture.handle;
+            state.Apply();
+
+            glActiveTexture(GL_TEXTURE0);
             glGetTexImage(GL_TEXTURE_2D, 0, fb_color_texture.gl_format, fb_color_texture.gl_type, ogl_img);
-            glBindTexture(GL_TEXTURE_2D, 0);
 
             for (int x = 0; x < fb_color_texture.width; ++x)
             {
@@ -704,9 +701,12 @@ void RasterizerOpenGL::CommitFramebuffer() {
 
             u8* ogl_img = new u8[fb_depth_texture.width * fb_depth_texture.height * ogl_bpp];
 
-            glBindTexture(GL_TEXTURE_2D, fb_depth_texture.handle);
+            state.texture_unit[0].enabled_2d = true;
+            state.texture_unit[0].texture_2d = fb_depth_texture.handle;
+            state.Apply();
+
+            glActiveTexture(GL_TEXTURE0);
             glGetTexImage(GL_TEXTURE_2D, 0, fb_depth_texture.gl_format, fb_depth_texture.gl_type, ogl_img);
-            glBindTexture(GL_TEXTURE_2D, 0);
 
             for (int x = 0; x < fb_depth_texture.width; ++x)
             {

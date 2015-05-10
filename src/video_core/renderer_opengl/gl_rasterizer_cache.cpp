@@ -15,18 +15,20 @@ RasterizerCacheOpenGL::~RasterizerCacheOpenGL() {
 }
 
 /// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
-void RasterizerCacheOpenGL::LoadAndBindTexture(const Pica::Regs::FullTextureConfig& config) {
+void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_unit, const Pica::Regs::FullTextureConfig& config) {
     u32 tex_paddr = config.config.GetPhysicalAddress();
 
     auto cached_texture = texture_cache.find(tex_paddr);
 
     if (cached_texture != texture_cache.end()) {
-        glBindTexture(GL_TEXTURE_2D, cached_texture->second.handle);
+        state.texture_unit[texture_unit].texture_2d = cached_texture->second.handle;
+        state.Apply();
     } else {
         CachedTexture new_texture;
 
         new_texture.handle = res_mgr->NewTexture();
-        glBindTexture(GL_TEXTURE_2D, new_texture.handle);
+        state.texture_unit[texture_unit].texture_2d = new_texture.handle;
+        state.Apply();
 
         // TODO: Need to choose filters that correspond to PICA once register is declared
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
