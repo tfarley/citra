@@ -412,13 +412,13 @@ void RasterizerOpenGL::SyncFramebuffer() {
 
 /// Syncs the OpenGL drawing state with the current PICA state
 void RasterizerOpenGL::SyncDrawState() {
-
-    // HACK: Sets viewport to center horizontally to fix some games' bottom screens. Works in all my tests, but is it correct?
     GLsizei viewportWidth = (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_x.Value()).ToFloat32() * 2;
     GLsizei viewportHeight = (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2;
 
+    // OpenGL uses different y coordinates, so negate corner offset and flip origin
+    // TODO: Ensure viewport_corner.x should not be negated or origin flipped
     glViewport((GLsizei)static_cast<float>(Pica::registers.viewport_corner.x.Value()),
-                (GLsizei)static_cast<float>(Pica::registers.viewport_corner.y.Value())
+                -(GLsizei)static_cast<float>(Pica::registers.viewport_corner.y.Value())
                     + Pica::registers.framebuffer.GetHeight() - viewportHeight,
                 viewportWidth, viewportHeight);
 
