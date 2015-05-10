@@ -4,37 +4,72 @@
 
 #pragma once
 
-#include "video_core/pica.h"
+#include "common/common_types.h"
 
 #include "generated/gl_3_2_core.h"
 
-#include <set>
-
-class ResourceManagerOpenGL : NonCopyable {
+class OGLResource : NonCopyable {
 public:
+    OGLResource();
+    virtual ~OGLResource();
 
-    ResourceManagerOpenGL();
-    ~ResourceManagerOpenGL();
+    /// Returns the internal OpenGL resource handle for this resource
+    GLuint GetHandle();
 
-    GLuint NewTexture();
-    void DeleteTexture(GLuint handle);
+    /// Deletes the internal OpenGL resource
+    virtual void Release();
 
-    GLuint NewShader(const char *vert_shader, const char *frag_shader);
-    void DeleteShader(GLuint handle);
+protected:
+    GLuint handle;
+};
 
-    GLuint NewBuffer();
-    void DeleteBuffer(GLuint handle);
+class OGLTexture : public OGLResource {
+public:
+    ~OGLTexture() override;
 
-    GLuint NewVAO();
-    void DeleteVAO(GLuint handle);
+    /// Creates a new internal OpenGL resource and stores the handle
+    void Create();
+    void Release() override;
+};
 
-    GLuint NewFramebuffer();
-    void DeleteFramebuffer(GLuint handle);
+class OGLShader : public OGLResource {
+public:
+    ~OGLShader() override;
 
-private:
-    std::set<GLuint> texture_handles;
-    std::set<GLuint> shader_handles;
-    std::set<GLuint> buffer_handles;
-    std::set<GLuint> vao_handles;
-    std::set<GLuint> framebuffer_handles;
+    /// Creates a new internal OpenGL resource and stores the handle
+    void Create(const char* vert_shader, const char* frag_shader);
+    void Release() override;
+
+    /// Gets the requested attribute location in this shader resource
+    GLuint GetAttribLocation(const GLchar* name);
+
+    /// Gets the requested uniform location in this shader resource
+    GLuint GetUniformLocation(const GLchar* name);
+};
+
+class OGLBuffer : public OGLResource {
+public:
+    ~OGLBuffer() override;
+
+    /// Creates a new internal OpenGL resource and stores the handle
+    void Create();
+    void Release() override;
+};
+
+class OGLVertexArray : public OGLResource {
+public:
+    ~OGLVertexArray() override;
+
+    /// Creates a new internal OpenGL resource and stores the handle
+    void Create();
+    void Release() override;
+};
+
+class OGLFramebuffer : public OGLResource {
+public:
+    ~OGLFramebuffer() override;
+
+    /// Creates a new internal OpenGL resource and stores the handle
+    void Create();
+    void Release() override;
 };
