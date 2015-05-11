@@ -42,9 +42,10 @@ private:
         GLuint alpha_sources;
         GLuint color_modifiers;
         GLuint alpha_modifiers;
-        GLuint color_op;
-        GLuint alpha_op;
+        GLuint color_alpha_op;
+        GLuint color_alpha_multiplier;
         GLuint const_color;
+        GLuint updates_combiner_buffer_color_alpha;
     };
 
     /// Structure used for storing information about color textures
