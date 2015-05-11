@@ -124,7 +124,7 @@ inline void Write(u32 addr, const T data) {
                 UNIMPLEMENTED();
                 break;
             }
-            
+
             unsigned horizontal_scale = (config.scaling != config.NoScale) ? 2 : 1;
             unsigned vertical_scale = (config.scaling == config.ScaleXY) ? 2 : 1;
 

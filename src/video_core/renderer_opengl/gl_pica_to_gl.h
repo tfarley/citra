@@ -26,8 +26,7 @@ static GLenum WrapMode(Pica::Regs::TextureConfig::WrapMode mode) {
     }
 }
 
-static GLenum BlendFunc(u32 factor)
-{
+static GLenum BlendFunc(u32 factor) {
     switch (factor) {
     case Pica::registers.output_merger.alpha_blending.Zero:
         return GL_ZERO;
@@ -65,8 +64,7 @@ static GLenum BlendFunc(u32 factor)
     }
 }
 
-static GLenum CompareFunc(u32 func)
-{
+static GLenum CompareFunc(u32 func) {
     switch (func) {
     case Pica::registers.output_merger.Never:
         return GL_NEVER;

@@ -6,8 +6,7 @@
 
 OpenGLState OpenGLState::cur_state;
 
-OpenGLState::OpenGLState()
-{
+OpenGLState::OpenGLState() {
     // These all match default OpenGL values
     cull.enabled = false;
     cull.mode = GL_BACK;
@@ -58,7 +57,7 @@ void OpenGLState::Apply() {
         glDisable(GL_CULL_FACE);
     }
 
-    //Depth test
+    // Depth test
     if (depth.test_enabled) {
         if (depth.test_enabled != cur_state.depth.test_enabled) {
             glEnable(GL_DEPTH_TEST);
@@ -131,8 +130,7 @@ void OpenGLState::Apply() {
                 glActiveTexture(GL_TEXTURE0 + i);
                 glBindTexture(GL_TEXTURE_2D, texture_unit[i].texture_2d);
             }
-        }
-        else if (texture_unit[i].enabled_2d != cur_state.texture_unit[i].enabled_2d) {
+        } else if (texture_unit[i].enabled_2d != cur_state.texture_unit[i].enabled_2d) {
             glActiveTexture(GL_TEXTURE0 + i);
             glDisable(GL_TEXTURE_2D);
         }

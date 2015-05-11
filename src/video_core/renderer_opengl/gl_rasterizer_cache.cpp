@@ -22,7 +22,7 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
         state.texture_unit[texture_unit].texture_2d = cached_texture->second->texture.GetHandle();
         state.Apply();
     } else {
-        std::shared_ptr<CachedTexture> new_texture(new CachedTexture());
+        std::unique_ptr<CachedTexture> new_texture(new CachedTexture());
 
         new_texture->texture.Create();
         state.texture_unit[texture_unit].texture_2d = new_texture->texture.GetHandle();
@@ -43,10 +43,8 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
 
         Math::Vec4<u8>* rgba_tex = new Math::Vec4<u8>[info.width * info.height];
 
-        for (int i = 0; i < info.width; i++)
-        {
-            for (int j = 0; j < info.height; j++)
-            {
+        for (int i = 0; i < info.width; i++) {
+            for (int j = 0; j < info.height; j++) {
                 rgba_tex[i + info.width * j] = Pica::DebugUtils::LookupTexture(Memory::GetPhysicalPointer(tex_paddr), i, info.height - 1 - j, info);
             }
         }
@@ -55,7 +53,7 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
 
         delete[] rgba_tex;
 
-        texture_cache.emplace(tex_paddr, new_texture);
+        texture_cache.emplace(tex_paddr, std::move(new_texture));
     }
 }
 
