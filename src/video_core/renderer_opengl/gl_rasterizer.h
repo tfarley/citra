@@ -106,12 +106,6 @@ private:
     /// Syncs the OpenGL drawing state to match the current PICA state
     void SyncDrawState();
 
-    /// Saves OpenGL state
-    void SaveRendererState();
-
-    /// Restores state so renderer can draw textures to screen
-    void RestoreRendererState();
-
     /// Copies the 3ds color framebuffer into the OpenGL color framebuffer texture
     void ReloadColorBuffer();
 

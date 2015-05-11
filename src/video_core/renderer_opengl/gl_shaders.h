@@ -65,7 +65,7 @@ void main() {
     SetVal(12, vert_texcoords[0].x);
     SetVal(13, vert_texcoords[0].y);
 
-    // TODO: These are wrong/broken
+    // TODO: These seem like the wrong map indices
     SetVal(14, vert_texcoords[1].x);
     SetVal(15, vert_texcoords[1].y);
     SetVal(16, vert_texcoords[2].x);
@@ -75,6 +75,7 @@ void main() {
 }
 )";
 
+// TODO: Create a shader constructor and cache that builds this program with minimal conditionals instead of using tev_cfg uniforms
 const char g_fragment_shader_hw[] = R"(
 #version 150 core
 

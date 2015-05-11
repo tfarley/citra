@@ -40,39 +40,38 @@ RasterizerOpenGL::RasterizerOpenGL() : last_fb_color_addr(-1), last_fb_depth_add
 }
 
 RasterizerOpenGL::~RasterizerOpenGL() {
-    // For automatic resource destruction
+    // Set context for automatic resource destruction
     render_window->MakeCurrent();
 }
 
+/// Initialize API-specific GPU objects
 void RasterizerOpenGL::InitObjects() {
-    OpenGLState prev_state = OpenGLState::GetCurState();
-
     // Create the hardware shader program and get attrib/uniform locations
     shader.Create(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
-    attrib_position = shader.GetAttribLocation("vert_position");
-    attrib_color = shader.GetAttribLocation("vert_color");
-    attrib_texcoords = shader.GetAttribLocation("vert_texcoords");
+    attrib_position = glGetAttribLocation(shader.GetHandle(), "vert_position");
+    attrib_color = glGetAttribLocation(shader.GetHandle(), "vert_color");
+    attrib_texcoords = glGetAttribLocation(shader.GetHandle(), "vert_texcoords");
 
-    uniform_alphatest_func = shader.GetUniformLocation("alphatest_func");
-    uniform_alphatest_ref = shader.GetUniformLocation("alphatest_ref");
+    uniform_alphatest_func = glGetUniformLocation(shader.GetHandle(), "alphatest_func");
+    uniform_alphatest_ref = glGetUniformLocation(shader.GetHandle(), "alphatest_ref");
 
-    uniform_tex = shader.GetUniformLocation("tex");
+    uniform_tex = glGetUniformLocation(shader.GetHandle(), "tex");
 
     for (int i = 0; i < 6; i++) {
         auto& uniform_tev = uniform_tev_cfgs[i];
 
         std::string tev_ref_str = "tev_cfgs[" + std::to_string(i) + "]";
-        uniform_tev.color_sources = shader.GetUniformLocation((tev_ref_str + ".color_sources").c_str());
-        uniform_tev.alpha_sources = shader.GetUniformLocation((tev_ref_str + ".alpha_sources").c_str());
-        uniform_tev.color_modifiers = shader.GetUniformLocation((tev_ref_str + ".color_modifiers").c_str());
-        uniform_tev.alpha_modifiers = shader.GetUniformLocation((tev_ref_str + ".alpha_modifiers").c_str());
-        uniform_tev.color_alpha_op = shader.GetUniformLocation((tev_ref_str + ".color_alpha_op").c_str());
-        uniform_tev.color_alpha_multiplier = shader.GetUniformLocation((tev_ref_str + ".color_alpha_multiplier").c_str());
-        uniform_tev.const_color = shader.GetUniformLocation((tev_ref_str + ".const_color").c_str());
-        uniform_tev.updates_combiner_buffer_color_alpha = shader.GetUniformLocation((tev_ref_str + ".updates_combiner_buffer_color_alpha").c_str());
+        uniform_tev.color_sources = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".color_sources").c_str());
+        uniform_tev.alpha_sources = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".alpha_sources").c_str());
+        uniform_tev.color_modifiers = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".color_modifiers").c_str());
+        uniform_tev.alpha_modifiers = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".alpha_modifiers").c_str());
+        uniform_tev.color_alpha_op = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".color_alpha_op").c_str());
+        uniform_tev.color_alpha_multiplier = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".color_alpha_multiplier").c_str());
+        uniform_tev.const_color = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".const_color").c_str());
+        uniform_tev.updates_combiner_buffer_color_alpha = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".updates_combiner_buffer_color_alpha").c_str());
     }
 
-    uniform_out_maps = shader.GetUniformLocation("out_maps");
+    uniform_out_maps = glGetUniformLocation(shader.GetHandle(), "out_maps");
 
     // Generate VBO and VAO
     vertex_buffer.Create();
@@ -140,9 +139,6 @@ void RasterizerOpenGL::InitObjects() {
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         LOG_ERROR(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
     }
-
-    // Return to the previous OpenGL state
-    prev_state.Apply();
 }
 
 /// Set the window (context) to draw with
@@ -163,7 +159,6 @@ void RasterizerOpenGL::AddTriangle(const Pica::VertexShader::OutputVertex& v0,
 void RasterizerOpenGL::DrawTriangles() {
     render_window->MakeCurrent();
 
-    OpenGLState prev_state = OpenGLState::GetCurState();
     state.Apply();
 
     SyncFramebuffer();
@@ -173,15 +168,12 @@ void RasterizerOpenGL::DrawTriangles() {
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertex_batch.size());
 
     vertex_batch.clear();
-
-    prev_state.Apply();
 }
 
-/// Notify renderer that a copy is about to happen
+/// Notify rasterizer that a copy within 3ds memory will occur after this notification
 void RasterizerOpenGL::NotifyPreCopy(u32 src_paddr, u32 size) {
     render_window->MakeCurrent();
 
-    OpenGLState prev_state = OpenGLState::GetCurState();
     state.Apply();
 
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
@@ -206,15 +198,12 @@ void RasterizerOpenGL::NotifyPreCopy(u32 src_paddr, u32 size) {
     if (max_lower <= min_upper) {
         CommitFramebuffer();
     }
-
-    prev_state.Apply();
 }
 
-/// Notify renderer that memory region has been changed
+/// Notify rasterizer that a 3ds memory region has been changed
 void RasterizerOpenGL::NotifyFlush(u32 paddr, u32 size) {
     render_window->MakeCurrent();
 
-    OpenGLState prev_state = OpenGLState::GetCurState();
     state.Apply();
 
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
@@ -240,10 +229,8 @@ void RasterizerOpenGL::NotifyFlush(u32 paddr, u32 size) {
         ReloadDepthBuffer();
     }
 
-    // Notify cache of flush in case the region touches a cached texture
+    // Notify cache of flush in case the region touches a cached resource
     res_cache.NotifyFlush(paddr, size);
-
-    prev_state.Apply();
 }
 
 /// Reconfigure the OpenGL color texture to use the given format and dimensions
@@ -344,7 +331,7 @@ void RasterizerOpenGL::ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Reg
         texture.gl_format, texture.gl_type, nullptr);
 }
 
-/// Syncs the state and contents of the OpenGL framebuffer with the current PICA framebuffer
+/// Syncs the state and contents of the OpenGL framebuffer to match the current PICA framebuffer
 void RasterizerOpenGL::SyncFramebuffer() {
     u32 cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
     u32 new_fb_color_format = Pica::registers.framebuffer.color_format.Value();
@@ -365,6 +352,7 @@ void RasterizerOpenGL::SyncFramebuffer() {
         CommitFramebuffer();
     }
 
+    // Reconfigure framebuffer textures if any property has changed
     if (fb_prop_changed) {
         ReconfigColorTexture(fb_color_texture, new_fb_color_format,
                                 Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
@@ -389,6 +377,7 @@ void RasterizerOpenGL::SyncFramebuffer() {
         }
     }
 
+    // Load buffer data again if fb modified in any way
     if (fb_modified) {
         last_fb_color_addr = cur_fb_color_addr;
         last_fb_depth_addr = cur_fb_depth_addr;
@@ -402,8 +391,9 @@ void RasterizerOpenGL::SyncFramebuffer() {
     }
 }
 
-/// Syncs the OpenGL drawing state with the current PICA state
+/// Syncs the OpenGL drawing state to match the current PICA state
 void RasterizerOpenGL::SyncDrawState() {
+    // Sync the viewport
     GLsizei viewportWidth = (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_x.Value()).ToFloat32() * 2;
     GLsizei viewportHeight = (GLsizei)Pica::float24::FromRawFloat24(Pica::registers.viewport_size_y.Value()).ToFloat32() * 2;
 
@@ -450,8 +440,8 @@ void RasterizerOpenGL::SyncDrawState() {
         state.depth.write_mask = GL_FALSE;
     }
 
-    // TODO: Untested, make sure stencil_reference_value refers to this mask
     // Sync stencil test
+    // TODO: Untested, make sure stencil_reference_value refers to this mask
     if (Pica::registers.output_merger.stencil_test.stencil_test_enable.Value()) {
         state.stencil.test_enabled = true;
         state.stencil.test_func = PicaToGL::CompareFunc(Pica::registers.output_merger.stencil_test.stencil_test_func.Value());
@@ -462,8 +452,8 @@ void RasterizerOpenGL::SyncDrawState() {
         state.stencil.test_enabled = false;
     }
 
-    // TODO: Untested, make sure stencil_mask refers to this mask
     // Sync stencil writing
+    // TODO: Untested, make sure stencil_mask refers to this mask
     state.stencil.write_mask = Pica::registers.output_merger.stencil_test.stencil_mask.Value();
 
     // TODO: Need to sync glStencilOp() once corresponding PICA registers are discovered
@@ -485,7 +475,7 @@ void RasterizerOpenGL::SyncDrawState() {
         state.blend.enabled = false;
     }
 
-    // Bind necessary texture(s), upload if uncached
+    // Sync bound texture(s), upload if uncached
     auto pica_textures = Pica::registers.GetTextures();
 
     for (int i = 0; i < 3; ++i) {
@@ -502,11 +492,11 @@ void RasterizerOpenGL::SyncDrawState() {
 
     state.Apply();
 
+    // Sync shader output register mapping to hw shader
     for (int i = 0; i < 7 * 4; ++i) {
         glUniform1i(uniform_out_maps + i, 0);
     }
 
-    // Sync shader output register mapping to hw shader
     for (int i = 0; i < 6; ++i) {
         const auto& output_register_map = Pica::registers.vs_output_attributes[i];
 
@@ -523,7 +513,7 @@ void RasterizerOpenGL::SyncDrawState() {
         }
     }
 
-    // Sync texture environments to hw shader
+    // Sync texture environment configurations to hw shader
     auto tev_stages = Pica::registers.GetTevStages();
     for (int i = 0; i < 6; i++) {
         const auto& stage = tev_stages[i];
@@ -606,7 +596,7 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
 
     u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(fb_depth_texture.format);
 
-    // OGL needs 4 bpp alignment for D24
+    // OpenGL needs 4 bpp alignment for D24
     u32 ogl_bpp = bytes_per_pixel == 3 ? 4 : bytes_per_pixel;
 
     u8* ogl_img = new u8[fb_depth_texture.width * fb_depth_texture.height * ogl_bpp];
@@ -689,13 +679,13 @@ void RasterizerOpenGL::CommitFramebuffer() {
 
     if (last_fb_depth_addr != -1)
     {
-        // TODO: Seems correct, but doesn't quite match sw renderer output. One of them is wrong.
+        // TODO: Output seems correct visually, but doesn't quite match sw renderer output. One of them is wrong.
         u8* depth_buffer = Memory::GetPhysicalPointer(last_fb_depth_addr);
 
         if (depth_buffer != nullptr) {
             u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(fb_depth_texture.format);
 
-            // OGL needs 4 bpp alignment for D24
+            // OpenGL needs 4 bpp alignment for D24
             u32 ogl_bpp = bytes_per_pixel == 3 ? 4 : bytes_per_pixel;
 
             std::unique_ptr<u8> ogl_img(new u8[fb_depth_texture.width * fb_depth_texture.height * ogl_bpp]);

@@ -14,7 +14,9 @@ public:
     virtual ~OGLResource();
 
     /// Returns the internal OpenGL resource handle for this resource
-    GLuint GetHandle();
+    inline GLuint GetHandle() {
+        return handle;
+    }
 
     /// Deletes the internal OpenGL resource
     virtual void Release();
@@ -29,6 +31,8 @@ public:
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create();
+
+    /// Deletes the internal OpenGL resource
     void Release() override;
 };
 
@@ -38,13 +42,9 @@ public:
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create(const char* vert_shader, const char* frag_shader);
+
+    /// Deletes the internal OpenGL resource
     void Release() override;
-
-    /// Gets the requested attribute location in this shader resource
-    GLuint GetAttribLocation(const GLchar* name);
-
-    /// Gets the requested uniform location in this shader resource
-    GLuint GetUniformLocation(const GLchar* name);
 };
 
 class OGLBuffer : public OGLResource {
@@ -53,6 +53,8 @@ public:
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create();
+
+    /// Deletes the internal OpenGL resource
     void Release() override;
 };
 
@@ -62,6 +64,8 @@ public:
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create();
+
+    /// Deletes the internal OpenGL resource
     void Release() override;
 };
 
@@ -71,5 +75,7 @@ public:
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create();
+
+    /// Deletes the internal OpenGL resource
     void Release() override;
 };

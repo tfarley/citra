@@ -67,6 +67,8 @@ RendererOpenGL::~RendererOpenGL() {
 void RendererOpenGL::SwapBuffers() {
     render_window->MakeCurrent();
 
+    state.Apply();
+
     for(int i : {0, 1}) {
         const auto& framebuffer = GPU::g_regs.framebuffer_config[i];
 

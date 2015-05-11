@@ -14,10 +14,6 @@ OGLResource::~OGLResource() {
 
 }
 
-GLuint OGLResource::GetHandle() {
-    return handle;
-}
-
 void OGLResource::Release() {
     
 }
@@ -56,14 +52,6 @@ void OGLShader::Create(const char* vert_shader, const char* frag_shader) {
 void OGLShader::Release() {
     glDeleteProgram(handle);
     handle = 0;
-}
-
-GLuint OGLShader::GetAttribLocation(const GLchar* name) {
-    return glGetAttribLocation(handle, name);
-}
-
-GLuint OGLShader::GetUniformLocation(const GLchar* name) {
-    return glGetUniformLocation(handle, name);
 }
 
 // Buffer objects

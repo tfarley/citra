@@ -8,6 +8,7 @@ OpenGLState OpenGLState::cur_state;
 
 OpenGLState::OpenGLState()
 {
+    // These all match default OpenGL values
     cull.enabled = false;
     cull.mode = GL_BACK;
 

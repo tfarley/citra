@@ -15,7 +15,7 @@ class RasterizerCacheOpenGL : NonCopyable {
 public:
     ~RasterizerCacheOpenGL();
 
-    /// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
+    /// Loads a texture from 3ds memory to OpenGL and caches it (if not already cached)
     void LoadAndBindTexture(OpenGLState &state, int texture_unit, const Pica::Regs::FullTextureConfig& config);
 
     /// Flush any cached resource that touches the flushed region
