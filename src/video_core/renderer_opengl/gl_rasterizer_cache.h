@@ -32,5 +32,5 @@ private:
         u32 size;
     };
 
-    std::map<u32, std::shared_ptr<CachedTexture>> texture_cache;
+    std::map<u32, std::unique_ptr<CachedTexture>> texture_cache;
 };
