@@ -5,6 +5,8 @@
 #include "core/mem_map.h"
 #include "video_core/renderer_opengl/gl_pica_to_gl.h"
 #include "video_core/renderer_opengl/gl_rasterizer_cache.h"
+#include "video_core/renderer_opengl/gl_shaders.h"
+#include "video_core/renderer_opengl/gl_shader_translator.h"
 #include "video_core/debug_utils/debug_utils.h"
 #include "video_core/math.h"
 
@@ -57,6 +59,23 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
 
         texture_cache.emplace(tex_paddr, new_texture);
     }
+}
+
+void RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState &state, u32 main_offset, const u32* shader_data, const u32* swizzle_data) {
+    auto cached_shader = shader_cache.find(main_offset);
+
+    if (cached_shader != shader_cache.end()) {
+        state.draw.shader_program = cached_shader->second->GetHandle();
+    } else {
+        std::shared_ptr<OGLShader> new_shader(new OGLShader());
+        new_shader->Create(PICABinToGLSL(main_offset, shader_data, swizzle_data).c_str(), GLShaders::g_fragment_shader_hw);
+        LOG_CRITICAL(Render_OpenGL, "%s", PICABinToGLSL(main_offset, shader_data, swizzle_data).c_str());
+        state.draw.shader_program = new_shader->GetHandle();
+
+        shader_cache.emplace(main_offset, new_shader);
+    }
+
+    state.Apply();
 }
 
 /// Flush any cached resource that touches the flushed region

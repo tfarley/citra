@@ -291,9 +291,7 @@ void ProcessTexEnv(int tex_env_idx) {
 }
 
 void main(void) {
-    for (int i = 0; i < 6; ++i) {
-        ProcessTexEnv(i);
-    }
+        ProcessTexEnv(0);
 
     if (alphatest_func == 0) {
         discard;

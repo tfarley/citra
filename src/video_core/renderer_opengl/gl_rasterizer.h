@@ -15,6 +15,15 @@ public:
     RasterizerOpenGL();
     ~RasterizerOpenGL() override;
 
+    /// Initialize uniform location variables pointing to the given shader program
+    void LocateUniforms(GLuint shader_program);
+
+    void SetUniformFloats(u32 index, const float* values) override;
+
+    void SetUniformBool(u32 index, int value) override;
+
+    void SetUniformInts(u32 index, const u32* values) override;
+
     /// Initialize API-specific GPU objects
     void InitObjects() override;
 
@@ -25,6 +34,10 @@ public:
     void AddTriangle(const Pica::VertexShader::OutputVertex& v0,
                      const Pica::VertexShader::OutputVertex& v1,
                      const Pica::VertexShader::OutputVertex& v2) override;
+
+    void AddRawTriangle(const RawVertex& v0,
+                        const RawVertex& v1,
+                        const RawVertex& v2) override;
 
     /// Draw the current batch of triangles
     void DrawTriangles() override;
@@ -129,6 +142,7 @@ private:
     RasterizerCacheOpenGL res_cache;
 
     std::vector<HardwareVertex> vertex_batch;
+    std::vector<RawVertex> raw_vertex_batch;
 
     OpenGLState state;
 
@@ -148,6 +162,8 @@ private:
     GLuint attrib_color;
     GLuint attrib_texcoords;
 
+    GLuint attrib_v;
+
     // Hardware fragment shader
     GLuint uniform_alphatest_func;
     GLuint uniform_alphatest_ref;
@@ -155,4 +171,8 @@ private:
     TEVConfigUniforms uniform_tev_cfgs[6];
     GLuint uniform_out_maps;
     GLuint uniform_tex_envs;
+
+    GLuint uniform_c;
+    GLuint uniform_b;
+    GLuint uniform_i;
 };

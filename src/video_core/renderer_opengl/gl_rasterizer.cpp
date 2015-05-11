@@ -44,6 +44,57 @@ RasterizerOpenGL::~RasterizerOpenGL() {
     render_window->MakeCurrent();
 }
 
+void RasterizerOpenGL::LocateUniforms(GLuint shader_program) {
+    uniform_alphatest_func = glGetUniformLocation(shader_program, "alphatest_func");
+    uniform_alphatest_ref = glGetUniformLocation(shader_program, "alphatest_ref");
+
+    uniform_tex = glGetUniformLocation(shader_program, "tex");
+
+    for (int i = 0; i < 6; i++) {
+        auto& uniform_tev = uniform_tev_cfgs[i];
+
+        std::string tev_ref_str = "tev_cfgs[" + std::to_string(i) + "]";
+        uniform_tev.color_sources = glGetUniformLocation(shader_program, (tev_ref_str + ".color_sources").c_str());
+        uniform_tev.alpha_sources = glGetUniformLocation(shader_program, (tev_ref_str + ".alpha_sources").c_str());
+        uniform_tev.color_modifiers = glGetUniformLocation(shader_program, (tev_ref_str + ".color_modifiers").c_str());
+        uniform_tev.alpha_modifiers = glGetUniformLocation(shader_program, (tev_ref_str + ".alpha_modifiers").c_str());
+        uniform_tev.color_alpha_op = glGetUniformLocation(shader_program, (tev_ref_str + ".color_alpha_op").c_str());
+        uniform_tev.color_alpha_multiplier = glGetUniformLocation(shader_program, (tev_ref_str + ".color_alpha_multiplier").c_str());
+        uniform_tev.const_color = glGetUniformLocation(shader_program, (tev_ref_str + ".const_color").c_str());
+        uniform_tev.updates_combiner_buffer_color_alpha = glGetUniformLocation(shader_program, (tev_ref_str + ".updates_combiner_buffer_color_alpha").c_str());
+    }
+
+    uniform_out_maps = glGetUniformLocation(shader_program, "out_maps");
+
+    uniform_c = glGetUniformLocation(shader_program, "c");
+    uniform_b = glGetUniformLocation(shader_program, "b");
+    uniform_i = glGetUniformLocation(shader_program, "i");
+}
+
+void RasterizerOpenGL::SetUniformFloats(u32 index, const float* values) {
+    render_window->MakeCurrent();
+    OpenGLState prev_state = OpenGLState::GetCurState();
+    state.Apply();
+    glUniform4fv(uniform_c + index, 1, values);
+    prev_state.Apply();
+}
+
+void RasterizerOpenGL::SetUniformBool(u32 index, int value) {
+    render_window->MakeCurrent();
+    OpenGLState prev_state = OpenGLState::GetCurState();
+    state.Apply();
+    glUniform1i(uniform_b + index, value);
+    prev_state.Apply();
+}
+
+void RasterizerOpenGL::SetUniformInts(u32 index, const u32* values) {
+    render_window->MakeCurrent();
+    OpenGLState prev_state = OpenGLState::GetCurState();
+    state.Apply();
+    glUniform4iv(uniform_i + index, 1, (const GLint*)values);
+    prev_state.Apply();
+}
+
 void RasterizerOpenGL::InitObjects() {
     OpenGLState prev_state = OpenGLState::GetCurState();
 
@@ -53,26 +104,7 @@ void RasterizerOpenGL::InitObjects() {
     attrib_color = shader.GetAttribLocation("vert_color");
     attrib_texcoords = shader.GetAttribLocation("vert_texcoords");
 
-    uniform_alphatest_func = shader.GetUniformLocation("alphatest_func");
-    uniform_alphatest_ref = shader.GetUniformLocation("alphatest_ref");
-
-    uniform_tex = shader.GetUniformLocation("tex");
-
-    for (int i = 0; i < 6; i++) {
-        auto& uniform_tev = uniform_tev_cfgs[i];
-
-        std::string tev_ref_str = "tev_cfgs[" + std::to_string(i) + "]";
-        uniform_tev.color_sources = shader.GetUniformLocation((tev_ref_str + ".color_sources").c_str());
-        uniform_tev.alpha_sources = shader.GetUniformLocation((tev_ref_str + ".alpha_sources").c_str());
-        uniform_tev.color_modifiers = shader.GetUniformLocation((tev_ref_str + ".color_modifiers").c_str());
-        uniform_tev.alpha_modifiers = shader.GetUniformLocation((tev_ref_str + ".alpha_modifiers").c_str());
-        uniform_tev.color_alpha_op = shader.GetUniformLocation((tev_ref_str + ".color_alpha_op").c_str());
-        uniform_tev.color_alpha_multiplier = shader.GetUniformLocation((tev_ref_str + ".color_alpha_multiplier").c_str());
-        uniform_tev.const_color = shader.GetUniformLocation((tev_ref_str + ".const_color").c_str());
-        uniform_tev.updates_combiner_buffer_color_alpha = shader.GetUniformLocation((tev_ref_str + ".updates_combiner_buffer_color_alpha").c_str());
-    }
-
-    uniform_out_maps = shader.GetUniformLocation("out_maps");
+    LocateUniforms(shader.GetHandle());
 
     // Generate VBO and VAO
     vertex_buffer.Create();
@@ -159,6 +191,14 @@ void RasterizerOpenGL::AddTriangle(const Pica::VertexShader::OutputVertex& v0,
     vertex_batch.push_back(HardwareVertex(v2));
 }
 
+void RasterizerOpenGL::AddRawTriangle(const RawVertex& v0,
+                                      const RawVertex& v1,
+                                      const RawVertex& v2) {
+    raw_vertex_batch.push_back(v0);
+    raw_vertex_batch.push_back(v1);
+    raw_vertex_batch.push_back(v2);
+}
+
 /// Draw the current batch of triangles
 void RasterizerOpenGL::DrawTriangles() {
     render_window->MakeCurrent();
@@ -169,10 +209,15 @@ void RasterizerOpenGL::DrawTriangles() {
     SyncFramebuffer();
     SyncDrawState();
 
-    glBufferData(GL_ARRAY_BUFFER, vertex_batch.size() * sizeof(HardwareVertex), vertex_batch.data(), GL_STREAM_DRAW);
+    /*glBufferData(GL_ARRAY_BUFFER, vertex_batch.size() * sizeof(HardwareVertex), vertex_batch.data(), GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertex_batch.size());
 
-    vertex_batch.clear();
+    vertex_batch.clear();*/
+
+    glBufferData(GL_ARRAY_BUFFER, raw_vertex_batch.size() * sizeof(RawVertex), raw_vertex_batch.data(), GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)raw_vertex_batch.size());
+
+    raw_vertex_batch.clear();
 
     prev_state.Apply();
 }
@@ -500,7 +545,19 @@ void RasterizerOpenGL::SyncDrawState() {
         }
     }
 
+    // Bind the translated shader
+    res_cache.LoadAndBindShader(state, Pica::registers.vs_main_offset.Value(), Pica::VertexShader::GetShaderBinary().data(), Pica::VertexShader::GetSwizzlePatterns().data());
+
     state.Apply();
+
+    attrib_v = glGetAttribLocation(state.draw.shader_program, "v");
+
+    for (int i = 0; i < 7; i++) {
+        glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, sizeof(RawVertex), (GLvoid*)(i * 4 * sizeof(float)));
+        glEnableVertexAttribArray(attrib_v + i);
+    }
+
+    LocateUniforms(state.draw.shader_program);
 
     for (int i = 0; i < 7 * 4; ++i) {
         glUniform1i(uniform_out_maps + i, 0);

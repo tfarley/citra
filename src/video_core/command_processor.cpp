@@ -110,6 +110,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
             DebugUtils::GeometryDumper geometry_dumper;
             PrimitiveAssembler<VertexShader::OutputVertex> primitive_assembler(registers.triangle_topology.Value());
+            PrimitiveAssembler<RawVertex> raw_primitive_assembler(registers.triangle_topology.Value());
             PrimitiveAssembler<DebugUtils::GeometryDumper::Vertex> dumping_primitive_assembler(registers.triangle_topology.Value());
 
             for (unsigned int index = 0; index < registers.num_vertices; ++index)
@@ -122,6 +123,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
                 // Initialize data for the current vertex
                 VertexShader::InputVertex input;
+                RawVertex raw_vertex;
 
                 // Load a debugging token to check whether this gets loaded by the running
                 // application or not.
@@ -130,6 +132,11 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
                 for (int i = 0; i < attribute_config.GetNumTotalAttributes(); ++i) {
                     if (attribute_config.IsDefaultAttribute(i)) {
+                        auto default_attrib = VertexShader::GetDefaultAttribute(i);;
+                        raw_vertex.attribs[i][0] = default_attrib.x.ToFloat32();
+                        raw_vertex.attribs[i][1] = default_attrib.y.ToFloat32();
+                        raw_vertex.attribs[i][2] = default_attrib.z.ToFloat32();
+                        raw_vertex.attribs[i][3] = default_attrib.w.ToFloat32();
                         input.attr[i] = VertexShader::GetDefaultAttribute(i);
                         LOG_TRACE(HW_GPU, "Loaded default attribute %x for vertex %x (index %x): (%f, %f, %f, %f)",
                                   i, vertex, index,
@@ -144,6 +151,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                                 (vertex_attribute_formats[i] == Regs::VertexAttributeFormat::SHORT) ? *(s16*)srcdata :
                                 *(float*)srcdata;
 
+                            raw_vertex.attribs[i][comp] = srcval;
                             input.attr[i][comp] = float24::FromFloat32(srcval);
                             LOG_TRACE(HW_GPU, "Loaded component %x of attribute %x for vertex %x (index %x) from 0x%08x + 0x%08lx + 0x%04lx: %f",
                                       comp, i, vertex, index,
@@ -179,7 +187,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                                                                    &geometry_dumper, _1, _2, _3));
 
                 // Send to vertex shader
-                VertexShader::OutputVertex output = VertexShader::RunShader(input, attribute_config.GetNumTotalAttributes());
+                //VertexShader::OutputVertex output = VertexShader::RunShader(input, attribute_config.GetNumTotalAttributes());
 
                 if (is_indexed) {
                     // TODO: Add processed vertex to vertex cache!
@@ -187,16 +195,24 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
                 if (Settings::values.use_hw_renderer) {
                     // Send to hardware renderer
-                    static auto AddHWTriangle = [](const Pica::VertexShader::OutputVertex& v0,
+                    /*static auto AddHWTriangle = [](const Pica::VertexShader::OutputVertex& v0,
                                                    const Pica::VertexShader::OutputVertex& v1,
                                                    const Pica::VertexShader::OutputVertex& v2) {
                         VideoCore::g_renderer->hwRasterizer->AddTriangle(v0, v1, v2);
                     };
                     
-                    primitive_assembler.SubmitVertex(output, AddHWTriangle);
+                    primitive_assembler.SubmitVertex(output, AddHWTriangle);*/
+
+                    static auto AddRawHWTriangle = [](const RawVertex& v0,
+                                                      const RawVertex& v1,
+                                                      const RawVertex& v2) {
+                        VideoCore::g_renderer->hwRasterizer->AddRawTriangle(v0, v1, v2);
+                    };
+
+                    raw_primitive_assembler.SubmitVertex(raw_vertex, AddRawHWTriangle);
                 } else {
                     // Send to triangle clipper
-                    primitive_assembler.SubmitVertex(output, Clipper::ProcessTriangle);
+                    //primitive_assembler.SubmitVertex(output, Clipper::ProcessTriangle);
                 }
             }
 
@@ -213,8 +229,10 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
         }
 
         case PICA_REG_INDEX(vs_bool_uniforms):
-            for (unsigned i = 0; i < 16; ++i)
+            for (unsigned i = 0; i < 16; ++i) {
                 VertexShader::GetBoolUniform(i) = (registers.vs_bool_uniforms.Value() & (1 << i)) != 0;
+                VideoCore::g_renderer->hwRasterizer->SetUniformBool(i, VertexShader::GetBoolUniform(i));
+            }
 
             break;
 
@@ -226,6 +244,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
             int index = (id - PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[0], 0x2b1));
             auto values = registers.vs_int_uniforms[index];
             VertexShader::GetIntUniform(index) = Math::Vec4<u8>(values.x, values.y, values.z, values.w);
+            VideoCore::g_renderer->hwRasterizer->SetUniformInts(index, (u32*)&registers.vs_int_uniforms[index]);
             LOG_TRACE(HW_GPU, "Set integer uniform %d to %02x %02x %02x %02x",
                       index, values.x.Value(), values.y.Value(), values.z.Value(), values.w.Value());
             break;
@@ -260,16 +279,29 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                     break;
                 }
 
+                float float32Uniform[4];
+
                 // NOTE: The destination component order indeed is "backwards"
                 if (uniform_setup.IsFloat32()) {
-                    for (auto i : {0,1,2,3})
+                    for (auto i : {0,1,2,3}) {
                         uniform[3 - i] = float24::FromFloat32(*(float*)(&uniform_write_buffer[i]));
+                        float32Uniform[3 - i] = *(float*)(&uniform_write_buffer[i]);
+                    }
+
+                    VideoCore::g_renderer->hwRasterizer->SetUniformFloats(uniform_setup.index, float32Uniform);
                 } else {
                     // TODO: Untested
                     uniform.w = float24::FromRawFloat24(uniform_write_buffer[0] >> 8);
                     uniform.z = float24::FromRawFloat24(((uniform_write_buffer[0] & 0xFF)<<16) | ((uniform_write_buffer[1] >> 16) & 0xFFFF));
                     uniform.y = float24::FromRawFloat24(((uniform_write_buffer[1] & 0xFFFF)<<8) | ((uniform_write_buffer[2] >> 24) & 0xFF));
                     uniform.x = float24::FromRawFloat24(uniform_write_buffer[2] & 0xFFFFFF);
+
+                    float32Uniform[0] = uniform.x.ToFloat32();
+                    float32Uniform[1] = uniform.y.ToFloat32();
+                    float32Uniform[2] = uniform.z.ToFloat32();
+                    float32Uniform[3] = uniform.w.ToFloat32();
+
+                    VideoCore::g_renderer->hwRasterizer->SetUniformFloats(uniform_setup.index, float32Uniform);
                 }
 
                 LOG_TRACE(HW_GPU, "Set uniform %x to (%f %f %f %f)", (int)uniform_setup.index,

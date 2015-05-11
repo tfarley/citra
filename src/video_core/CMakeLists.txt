@@ -4,6 +4,7 @@ set(SRCS
             renderer_opengl/gl_rasterizer_cache.cpp
             renderer_opengl/renderer_opengl.cpp
             renderer_opengl/gl_resource_manager.cpp
+            renderer_opengl/gl_shader_translator.cpp
             renderer_opengl/gl_shader_util.cpp
             renderer_opengl/gl_state.cpp
             debug_utils/debug_utils.cpp
@@ -23,6 +24,7 @@ set(HEADERS
             renderer_opengl/gl_rasterizer.h
             renderer_opengl/gl_rasterizer_cache.h
             renderer_opengl/gl_resource_manager.h
+            renderer_opengl/gl_shader_translator.h
             renderer_opengl/gl_shader_util.h
             renderer_opengl/gl_shaders.h
             renderer_opengl/gl_state.h

@@ -18,6 +18,9 @@ public:
     /// Loads a texture from 3ds to OpenGL and caches it (if not already cached)
     void LoadAndBindTexture(OpenGLState &state, int texture_unit, const Pica::Regs::FullTextureConfig& config);
 
+    /// Loads a shader from 3ds to OpenGL and caches it (if not already cached)
+    void LoadAndBindShader(OpenGLState &state, u32 main_offset, const u32* shader_data, const u32* swizzle_data);
+
     /// Flush any cached resource that touches the flushed region
     void NotifyFlush(u32 paddr, u32 size);
 
@@ -33,4 +36,5 @@ private:
     };
 
     std::map<u32, std::shared_ptr<CachedTexture>> texture_cache;
+    std::map<u32, std::shared_ptr<OGLShader>> shader_cache;
 };
