@@ -49,7 +49,7 @@ in vec4 vert_position;
 in vec4 vert_color;
 in vec2 vert_texcoords[3];
 
-out vec4 o[16];
+out vec4 o[7];
 
 uniform int out_maps[7*4];
 
@@ -68,16 +68,17 @@ void main() {
     // TODO: These are wrong/broken
     SetVal(14, vert_texcoords[1].x);
     SetVal(15, vert_texcoords[1].y);
+    SetVal(16, vert_texcoords[2].x);
+    SetVal(17, vert_texcoords[2].y);
 
     gl_Position = vec4(vert_position.x, -vert_position.y, -vert_position.z, vert_position.w);
-    //gl_Position = vert_position;
 }
 )";
 
 const char g_fragment_shader_hw[] = R"(
 #version 150 core
 
-in vec4 o[16];
+in vec4 o[7];
 out vec4 color;
 
 uniform int alphatest_func;
@@ -91,15 +92,17 @@ struct TEVConfig
     ivec3 alpha_sources;
     ivec3 color_modifiers;
     ivec3 alpha_modifiers;
-    int color_op;
-    int alpha_op;
+    ivec2 color_alpha_op;
+    vec2 color_alpha_multiplier;
     vec4 const_color;
+    bvec2 updates_combiner_buffer_color_alpha;
 };
 
 uniform TEVConfig tev_cfgs[6];
 
 uniform int out_maps[7*4];
 
+vec4 g_combiner_buffer;
 vec4 g_last_tex_env_out;
 vec4 g_const_color;
 
@@ -127,6 +130,9 @@ vec4 GetSource(int source) {
     }
     else if (source == 6) {
         // TODO: no 4th texture?
+    }
+    else if (source == 13) {
+        return g_combiner_buffer;
     }
     else if (source == 14) {
         return g_const_color;
@@ -266,14 +272,22 @@ void ProcessTexEnv(int tex_env_idx) {
     vec3 color_results[3] = vec3[3](GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.x, GetSource(tev_cfgs[tex_env_idx].color_sources.x)),
                                     GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.y, GetSource(tev_cfgs[tex_env_idx].color_sources.y)),
                                     GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.z, GetSource(tev_cfgs[tex_env_idx].color_sources.z)));
-    vec3 color_output = ColorCombine(tev_cfgs[tex_env_idx].color_op, color_results);
+    vec3 color_output = ColorCombine(tev_cfgs[tex_env_idx].color_alpha_op.x, color_results);
 
     float alpha_results[3] = float[3](GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.x, GetSource(tev_cfgs[tex_env_idx].alpha_sources.x)),
                                       GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.y, GetSource(tev_cfgs[tex_env_idx].alpha_sources.y)),
                                       GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.z, GetSource(tev_cfgs[tex_env_idx].alpha_sources.z)));
-    float alpha_output = AlphaCombine(tev_cfgs[tex_env_idx].alpha_op, alpha_results);
+    float alpha_output = AlphaCombine(tev_cfgs[tex_env_idx].color_alpha_op.y, alpha_results);
 
-    g_last_tex_env_out = vec4(color_output, alpha_output);
+    g_last_tex_env_out = vec4(min(color_output * tev_cfgs[tex_env_idx].color_alpha_multiplier.x, 1.0), min(alpha_output * tev_cfgs[tex_env_idx].color_alpha_multiplier.y, 1.0));
+
+    if (tev_cfgs[tex_env_idx].updates_combiner_buffer_color_alpha.x) {
+        g_combiner_buffer.rgb = g_last_tex_env_out.rgb;
+    }
+
+    if (tev_cfgs[tex_env_idx].updates_combiner_buffer_color_alpha.y) {
+        g_combiner_buffer.a = g_last_tex_env_out.a;
+    }
 }
 
 void main(void) {

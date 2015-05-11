@@ -66,9 +66,10 @@ void RasterizerOpenGL::InitObjects() {
         uniform_tev.alpha_sources = shader.GetUniformLocation((tev_ref_str + ".alpha_sources").c_str());
         uniform_tev.color_modifiers = shader.GetUniformLocation((tev_ref_str + ".color_modifiers").c_str());
         uniform_tev.alpha_modifiers = shader.GetUniformLocation((tev_ref_str + ".alpha_modifiers").c_str());
-        uniform_tev.color_op = shader.GetUniformLocation((tev_ref_str + ".color_op").c_str());
-        uniform_tev.alpha_op = shader.GetUniformLocation((tev_ref_str + ".alpha_op").c_str());
+        uniform_tev.color_alpha_op = shader.GetUniformLocation((tev_ref_str + ".color_alpha_op").c_str());
+        uniform_tev.color_alpha_multiplier = shader.GetUniformLocation((tev_ref_str + ".color_alpha_multiplier").c_str());
         uniform_tev.const_color = shader.GetUniformLocation((tev_ref_str + ".const_color").c_str());
+        uniform_tev.updates_combiner_buffer_color_alpha = shader.GetUniformLocation((tev_ref_str + ".updates_combiner_buffer_color_alpha").c_str());
     }
 
     uniform_out_maps = shader.GetUniformLocation("out_maps");
@@ -501,6 +502,10 @@ void RasterizerOpenGL::SyncDrawState() {
 
     state.Apply();
 
+    for (int i = 0; i < 7 * 4; ++i) {
+        glUniform1i(uniform_out_maps + i, 0);
+    }
+
     // Sync shader output register mapping to hw shader
     for (int i = 0; i < 6; ++i) {
         const auto& output_register_map = Pica::registers.vs_output_attributes[i];
@@ -512,7 +517,9 @@ void RasterizerOpenGL::SyncDrawState() {
 
         // TODO: Might only need to do this once per shader? Not sure when/if out maps are modified.
         for (int comp = 0; comp < 4; ++comp) {
-            glUniform1i(uniform_out_maps + semantics[comp], 4 * i + comp);
+            if (semantics[comp] != Pica::Regs::VSOutputAttributes::INVALID) {
+                glUniform1i(uniform_out_maps + semantics[comp], 4 * i + comp);
+            }
         }
     }
 
@@ -520,7 +527,7 @@ void RasterizerOpenGL::SyncDrawState() {
     auto tev_stages = Pica::registers.GetTevStages();
     for (int i = 0; i < 6; i++) {
         const auto& stage = tev_stages[i];
-        const auto& uniform_tev = uniform_tev_cfgs[i];
+        const auto& uniform_tev_cfg = uniform_tev_cfgs[i];
 
         GLint color_srcs[3] = { (GLint)stage.color_source1.Value(), (GLint)stage.color_source2.Value(), (GLint)stage.color_source3.Value() };
         GLint alpha_srcs[3] = { (GLint)stage.alpha_source1.Value(), (GLint)stage.alpha_source2.Value(), (GLint)stage.alpha_source3.Value() };
@@ -531,13 +538,16 @@ void RasterizerOpenGL::SyncDrawState() {
                                     stage.const_b.Value() / 255.0f,
                                     stage.const_a.Value() / 255.0f };
 
-        glUniform3iv(uniform_tev.color_sources, 1, color_srcs);
-        glUniform3iv(uniform_tev.alpha_sources, 1, alpha_srcs);
-        glUniform3iv(uniform_tev.color_modifiers, 1, color_mods);
-        glUniform3iv(uniform_tev.alpha_modifiers, 1, alpha_mods);
-        glUniform1i(uniform_tev.color_op, (GLint)stage.color_op.Value());
-        glUniform1i(uniform_tev.alpha_op, (GLint)stage.alpha_op.Value());
-        glUniform4fv(uniform_tev.const_color, 1, const_color);
+        glUniform3iv(uniform_tev_cfg.color_sources, 1, color_srcs);
+        glUniform3iv(uniform_tev_cfg.alpha_sources, 1, alpha_srcs);
+        glUniform3iv(uniform_tev_cfg.color_modifiers, 1, color_mods);
+        glUniform3iv(uniform_tev_cfg.alpha_modifiers, 1, alpha_mods);
+        glUniform2i(uniform_tev_cfg.color_alpha_op, (GLint)stage.color_op.Value(), (GLint)stage.alpha_op.Value());
+        glUniform2f(uniform_tev_cfg.color_alpha_multiplier, stage.GetColorMultiplier(), stage.GetAlphaMultiplier());
+        glUniform4fv(uniform_tev_cfg.const_color, 1, const_color);
+        glUniform2i(uniform_tev_cfg.updates_combiner_buffer_color_alpha,
+                    Pica::registers.tev_combiner_buffer_input.TevStageUpdatesCombinerBufferColor(i),
+                    Pica::registers.tev_combiner_buffer_input.TevStageUpdatesCombinerBufferAlpha(i));
     }
 
     // Sync alpha testing to hw shader
