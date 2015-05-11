@@ -15,6 +15,8 @@
 
 #include "generated/gl_3_2_core.h"
 
+#include <memory>
+
 u32 ColorFormatBytesPerPixel(u32 format) {
     switch (format) {
     case Pica::registers.framebuffer.RGBA8:
@@ -651,14 +653,14 @@ void RasterizerOpenGL::CommitFramebuffer() {
         if (color_buffer != nullptr) {
             u32 bytes_per_pixel = ColorFormatBytesPerPixel(fb_color_texture.format);
 
-            u8* ogl_img = new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel];
+            std::unique_ptr<u8> ogl_img(new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel]);
 
             state.texture_unit[0].enabled_2d = true;
             state.texture_unit[0].texture_2d = fb_color_texture.texture.GetHandle();
             state.Apply();
 
             glActiveTexture(GL_TEXTURE0);
-            glGetTexImage(GL_TEXTURE_2D, 0, fb_color_texture.gl_format, fb_color_texture.gl_type, ogl_img);
+            glGetTexImage(GL_TEXTURE_2D, 0, fb_color_texture.gl_format, fb_color_texture.gl_type, ogl_img.get());
 
             for (int x = 0; x < fb_color_texture.width; ++x)
             {
@@ -669,11 +671,9 @@ void RasterizerOpenGL::CommitFramebuffer() {
                     u32 ogl_px_idx = x * bytes_per_pixel + y * fb_color_texture.width * bytes_per_pixel;
 
                     u8* pixel = color_buffer + dst_offset;
-                    memcpy(pixel, &ogl_img[ogl_px_idx], bytes_per_pixel);
+                    memcpy(pixel, &ogl_img.get()[ogl_px_idx], bytes_per_pixel);
                 }
             }
-
-            delete[] ogl_img;
         }
     }
 
@@ -688,14 +688,14 @@ void RasterizerOpenGL::CommitFramebuffer() {
             // OGL needs 4 bpp alignment for D24
             u32 ogl_bpp = bytes_per_pixel == 3 ? 4 : bytes_per_pixel;
 
-            u8* ogl_img = new u8[fb_depth_texture.width * fb_depth_texture.height * ogl_bpp];
+            std::unique_ptr<u8> ogl_img(new u8[fb_depth_texture.width * fb_depth_texture.height * ogl_bpp]);
 
             state.texture_unit[0].enabled_2d = true;
             state.texture_unit[0].texture_2d = fb_depth_texture.texture.GetHandle();
             state.Apply();
 
             glActiveTexture(GL_TEXTURE0);
-            glGetTexImage(GL_TEXTURE_2D, 0, fb_depth_texture.gl_format, fb_depth_texture.gl_type, ogl_img);
+            glGetTexImage(GL_TEXTURE_2D, 0, fb_depth_texture.gl_format, fb_depth_texture.gl_type, ogl_img.get());
 
             for (int x = 0; x < fb_depth_texture.width; ++x)
             {
@@ -707,14 +707,14 @@ void RasterizerOpenGL::CommitFramebuffer() {
 
                     switch (fb_depth_texture.format) {
                     case Pica::Regs::DepthFormat::D16:
-                        Color::EncodeD16(((u16*)ogl_img)[ogl_px_idx], depth_buffer + dst_offset);
+                        Color::EncodeD16(((u16*)ogl_img.get())[ogl_px_idx], depth_buffer + dst_offset);
                         break;
                     case Pica::Regs::DepthFormat::D24:
-                        Color::EncodeD24(((u32*)ogl_img)[ogl_px_idx], depth_buffer + dst_offset);
+                        Color::EncodeD24(((u32*)ogl_img.get())[ogl_px_idx], depth_buffer + dst_offset);
                         break;
                     case Pica::Regs::DepthFormat::D24S8:
                     {
-                        u32 depth_stencil = ((u32*)ogl_img)[ogl_px_idx];
+                        u32 depth_stencil = ((u32*)ogl_img.get())[ogl_px_idx];
                         Color::EncodeD24S8(depth_stencil >> 8, depth_stencil & 0xFF, depth_buffer + dst_offset);
                         break;
                     }
@@ -725,8 +725,6 @@ void RasterizerOpenGL::CommitFramebuffer() {
                     }
                 }
             }
-
-            delete[] ogl_img;
         }
     }
 }
