@@ -53,14 +53,14 @@ static std::array<GLfloat, 3*2> MakeOrthographicMatrix(const float width, const 
 
 /// RendererOpenGL constructor
 RendererOpenGL::RendererOpenGL() {
-    hwRasterizer = new RasterizerOpenGL();
+    hw_rasterizer = new RasterizerOpenGL();
     resolution_width  = std::max(VideoCore::kScreenTopWidth, VideoCore::kScreenBottomWidth);
     resolution_height = VideoCore::kScreenTopHeight + VideoCore::kScreenBottomHeight;
 }
 
 /// RendererOpenGL destructor
 RendererOpenGL::~RendererOpenGL() {
-    delete hwRasterizer;
+    delete hw_rasterizer;
 }
 
 /// Swap buffers (render frame)
@@ -230,7 +230,7 @@ void RendererOpenGL::InitOpenGLObjects() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
 
-    hwRasterizer->InitObjects();
+    hw_rasterizer->InitObjects();
 }
 
 void RendererOpenGL::ConfigureFramebufferTexture(OpenGLState &state, TextureInfo& texture,
@@ -348,7 +348,7 @@ void RendererOpenGL::UpdateFramerate() {
  */
 void RendererOpenGL::SetWindow(EmuWindow* window) {
     render_window = window;
-    hwRasterizer->SetWindow(window);
+    hw_rasterizer->SetWindow(window);
 }
 
 /// Initialize the renderer

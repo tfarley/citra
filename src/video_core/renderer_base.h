@@ -50,7 +50,7 @@ public:
         return m_current_frame;
     }
 
-    HWRasterizer *hwRasterizer;
+    HWRasterizer *hw_rasterizer;
 
 protected:
     f32 m_current_fps;              ///< Current framerate, should be set by the renderer

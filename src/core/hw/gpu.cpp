@@ -107,7 +107,7 @@ inline void Write(u32 addr, const T data) {
                 GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PSC1);
             }
 
-            VideoCore::g_renderer->hwRasterizer->NotifyFlush(config.GetStartAddress(), config.GetEndAddress() - config.GetStartAddress());
+            VideoCore::g_renderer->hw_rasterizer->NotifyFlush(config.GetStartAddress(), config.GetEndAddress() - config.GetStartAddress());
         }
         break;
     }
@@ -134,7 +134,7 @@ inline void Write(u32 addr, const T data) {
             u32 input_size = config.input_height.Value() * config.input_width.Value() * GPU::Regs::BytesPerPixel(config.input_format.Value());
             u32 output_size = output_height * output_width * GPU::Regs::BytesPerPixel(config.output_format.Value());
 
-            VideoCore::g_renderer->hwRasterizer->NotifyPreCopy(config.GetPhysicalInputAddress(), input_size);
+            VideoCore::g_renderer->hw_rasterizer->NotifyPreCopy(config.GetPhysicalInputAddress(), input_size);
 
             if (config.raw_copy) {
                 // Raw copies do not perform color conversion nor tiled->linear / linear->tiled conversions
@@ -150,7 +150,7 @@ inline void Write(u32 addr, const T data) {
 
                 GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PPF);
 
-                VideoCore::g_renderer->hwRasterizer->NotifyFlush(config.GetPhysicalOutputAddress(), output_size);
+                VideoCore::g_renderer->hw_rasterizer->NotifyFlush(config.GetPhysicalOutputAddress(), output_size);
 
                 break;
             }
@@ -258,7 +258,7 @@ inline void Write(u32 addr, const T data) {
 
             GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PPF);
 
-            VideoCore::g_renderer->hwRasterizer->NotifyFlush(config.GetPhysicalOutputAddress(), output_size);
+            VideoCore::g_renderer->hw_rasterizer->NotifyFlush(config.GetPhysicalOutputAddress(), output_size);
         }
         break;
     }

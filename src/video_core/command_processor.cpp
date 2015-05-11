@@ -190,7 +190,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                     static auto AddHWTriangle = [](const Pica::VertexShader::OutputVertex& v0,
                                                    const Pica::VertexShader::OutputVertex& v1,
                                                    const Pica::VertexShader::OutputVertex& v2) {
-                        VideoCore::g_renderer->hwRasterizer->AddTriangle(v0, v1, v2);
+                        VideoCore::g_renderer->hw_rasterizer->AddTriangle(v0, v1, v2);
                     };
                     
                     primitive_assembler.SubmitVertex(output, AddHWTriangle);
@@ -201,7 +201,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
             }
 
             if (Settings::values.use_hw_renderer) {
-                VideoCore::g_renderer->hwRasterizer->DrawTriangles();
+                VideoCore::g_renderer->hw_rasterizer->DrawTriangles();
             }
 
             geometry_dumper.Dump();
