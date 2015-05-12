@@ -511,7 +511,7 @@ void RasterizerOpenGL::SyncDrawState() {
         glUniform3iv(uniform_tev_cfg.color_modifiers, 1, color_mods);
         glUniform3iv(uniform_tev_cfg.alpha_modifiers, 1, alpha_mods);
         glUniform2i(uniform_tev_cfg.color_alpha_op, (GLint)stage.color_op.Value(), (GLint)stage.alpha_op.Value());
-        glUniform2f(uniform_tev_cfg.color_alpha_multiplier, (GLfloat)stage.GetColorMultiplier(), (GLfloat)stage.GetAlphaMultiplier());
+        glUniform2i(uniform_tev_cfg.color_alpha_multiplier, stage.GetColorMultiplier(), stage.GetAlphaMultiplier());
         glUniform4fv(uniform_tev_cfg.const_color, 1, const_color);
         glUniform2i(uniform_tev_cfg.updates_combiner_buffer_color_alpha,
                     Pica::registers.tev_combiner_buffer_input.TevStageUpdatesCombinerBufferColor(tev_stage_idx),

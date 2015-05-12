@@ -147,7 +147,7 @@ struct TEVConfig
     ivec3 color_modifiers;
     ivec3 alpha_modifiers;
     ivec2 color_alpha_op;
-    vec2 color_alpha_multiplier;
+    ivec2 color_alpha_multiplier;
     vec4 const_color;
     bvec2 updates_combiner_buffer_color_alpha;
 };
@@ -248,7 +248,7 @@ vec3 ColorCombine(int op, vec3 color[3]) {
     } else if (op == OPERATION_ADD) {
         return min(color[0] + color[1], 1.0);
     } else if (op == OPERATION_ADDSIGNED) {
-        return color[0] + color[1] - vec3(0.5, 0.5, 0.5);
+        return clamp(color[0] + color[1] - vec3(0.5, 0.5, 0.5), 0.0, 1.0);
     } else if (op == OPERATION_LERP) {
         return color[0] * color[2] + color[1] * (vec3(1.0, 1.0, 1.0) - color[2]);
     } else if (op == OPERATION_SUBTRACT) {
@@ -270,7 +270,7 @@ float AlphaCombine(int op, float alpha[3]) {
     } else if (op == OPERATION_ADD) {
         return min(alpha[0] + alpha[1], 1.0);
     } else if (op == OPERATION_ADDSIGNED) {
-        return alpha[0] + alpha[1] - 0.5;
+        return clamp(alpha[0] + alpha[1] - 0.5, 0.0, 1.0);
     } else if (op == OPERATION_LERP) {
         return alpha[0] * alpha[2] + alpha[1] * (1.0 - alpha[2]);
     } else if (op == OPERATION_SUBTRACT) {
