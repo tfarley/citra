@@ -440,20 +440,22 @@ void RasterizerOpenGL::SyncDrawState() {
         state.depth.write_mask = GL_FALSE;
     }
 
+    // Stencil functionality commented out until a good test case and verified info crop up
+
     // Sync stencil test
     // TODO: Untested, make sure stencil_reference_value refers to this mask
-    if (Pica::registers.output_merger.stencil_test.stencil_test_enable.Value()) {
-        state.stencil.test_enabled = true;
-        state.stencil.test_func = PicaToGL::CompareFunc(Pica::registers.output_merger.stencil_test.stencil_test_func.Value());
-        state.stencil.test_ref = Pica::registers.output_merger.stencil_test.stencil_reference_value.Value();
-        state.stencil.test_mask = Pica::registers.output_merger.stencil_test.stencil_replacement_value.Value();
-    } else {
-        state.stencil.test_enabled = false;
-    }
+    //if (Pica::registers.output_merger.stencil_test.stencil_test_enable.Value()) {
+    //    state.stencil.test_enabled = true;
+    //    state.stencil.test_func = PicaToGL::CompareFunc(Pica::registers.output_merger.stencil_test.stencil_test_func.Value());
+    //    state.stencil.test_ref = Pica::registers.output_merger.stencil_test.stencil_reference_value.Value();
+    //    state.stencil.test_mask = Pica::registers.output_merger.stencil_test.stencil_replacement_value.Value();
+    //} else {
+    //    state.stencil.test_enabled = false;
+    //}
 
     // Sync stencil writing
     // TODO: Untested, make sure stencil_mask refers to this mask
-    state.stencil.write_mask = Pica::registers.output_merger.stencil_test.stencil_mask.Value();
+    //state.stencil.write_mask = Pica::registers.output_merger.stencil_test.stencil_mask.Value();
 
     // TODO: Need to sync glStencilOp() once corresponding PICA registers are discovered
 
