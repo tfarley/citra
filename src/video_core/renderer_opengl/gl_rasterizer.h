@@ -29,11 +29,11 @@ public:
     /// Draw the current batch of triangles
     void DrawTriangles() override;
 
-    /// Notify rasterizer that a copy within 3ds memory will occur after this notification
-    void NotifyPreCopy(u32 src_paddr, u32 size) override;
+    /// Notify rasterizer that a copy within 3DS memory will occur after this notification
+    void NotifyPreCopy(PAddr src_addr, u32 size) override;
 
-    /// Notify rasterizer that a 3ds memory region has been changed
-    void NotifyFlush(u32 paddr, u32 size) override;
+    /// Notify rasterizer that a 3DS memory region has been changed
+    void NotifyFlush(PAddr addr, u32 size) override;
 
 private:
     /// Structure used for managing texture environment states
@@ -68,7 +68,7 @@ private:
         GLenum gl_type;
     };
 
-    ///Structure that the hardware rendered vertices are composed of
+    /// Structure that the hardware rendered vertices are composed of
     struct HardwareVertex {
         HardwareVertex(const Pica::VertexShader::OutputVertex& v) {
             position[0] = v.pos.x.ToFloat32();
@@ -113,10 +113,10 @@ private:
     void ReloadDepthBuffer();
 
     /**
-    * Save the current OpenGL framebuffer to the current PICA framebuffer in 3ds memory
-    * Loads the OpenGL framebuffer textures into temporary buffers
-    * Then copies into the 3ds framebuffer using proper Morton order
-    */
+     * Save the current OpenGL framebuffer to the current PICA framebuffer in 3ds memory
+     * Loads the OpenGL framebuffer textures into temporary buffers
+     * Then copies into the 3ds framebuffer using proper Morton order
+     */
     void CommitFramebuffer();
 
     EmuWindow* render_window;

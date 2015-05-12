@@ -21,7 +21,8 @@ static GLenum WrapMode(Pica::Regs::TextureConfig::WrapMode mode) {
     case Pica::Regs::TextureConfig::WrapMode::MirroredRepeat:
         return GL_MIRRORED_REPEAT;
     default:
-        LOG_ERROR(Render_OpenGL, "Unknown texture wrap mode %d", mode);
+        LOG_CRITICAL(Render_OpenGL, "Unknown texture wrap mode %d", mode);
+        UNIMPLEMENTED();
         return GL_CLAMP_TO_EDGE;
     }
 }
@@ -59,7 +60,8 @@ static GLenum BlendFunc(u32 factor) {
     case Pica::registers.output_merger.alpha_blending.SourceAlphaSaturate:
         return GL_SRC_ALPHA_SATURATE;
     default:
-        LOG_ERROR(Render_OpenGL, "Unknown blend factor %d", factor);
+        LOG_CRITICAL(Render_OpenGL, "Unknown blend factor %d", factor);
+        UNIMPLEMENTED();
         return GL_ONE;
     }
 }
@@ -83,7 +85,8 @@ static GLenum CompareFunc(u32 func) {
     case Pica::registers.output_merger.GreaterThanOrEqual:
         return GL_GEQUAL;
     default:
-        LOG_ERROR(Render_OpenGL, "Unknown compare function %d", func);
+        LOG_CRITICAL(Render_OpenGL, "Unknown compare function %d", func);
+        UNIMPLEMENTED();
         return GL_ALWAYS;
     }
 }
