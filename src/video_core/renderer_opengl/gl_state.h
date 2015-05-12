@@ -45,7 +45,7 @@ public:
     struct {
         bool enabled_2d; // GL_TEXTURE_2D
         GLuint texture_2d; // GL_TEXTURE_BINDING_2D
-    } texture_unit[3];
+    } texture_units[3];
 
     struct {
         GLuint framebuffer; // GL_DRAW_FRAMEBUFFER_BINDING

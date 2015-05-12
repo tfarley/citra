@@ -45,13 +45,15 @@ void main() {
 const char g_vertex_shader_hw[] = R"(
 #version 150 core
 
+#define NUM_VTX_ATTR 7
+
 in vec4 vert_position;
 in vec4 vert_color;
 in vec2 vert_texcoords[3];
 
-out vec4 o[7];
+out vec4 o[NUM_VTX_ATTR];
 
-uniform int out_maps[7*4];
+uniform int out_maps[NUM_VTX_ATTR * 4];
 
 void SetVal(int map_idx, float val) {
     o[out_maps[map_idx] / 4][out_maps[map_idx] % 4] = val;
@@ -79,7 +81,58 @@ void main() {
 const char g_fragment_shader_hw[] = R"(
 #version 150 core
 
-in vec4 o[7];
+#define NUM_TEV_STAGES 6
+#define NUM_VTX_ATTR 7
+
+#define SOURCE_PRIMARYCOLOR         0x0
+#define SOURCE_PRIMARYFRAGMENTCOLOR 0x1
+#define SOURCE_TEXTURE0             0x3
+#define SOURCE_TEXTURE1             0x4
+#define SOURCE_TEXTURE2             0x5
+#define SOURCE_TEXTURE3             0x6
+#define SOURCE_PREVIOUSBUFFER       0xd
+#define SOURCE_CONSTANT             0xe
+#define SOURCE_PREVIOUS             0xf
+
+#define COLORMODIFIER_SOURCECOLOR         0x0
+#define COLORMODIFIER_ONEMINUSSOURCECOLOR 0x1
+#define COLORMODIFIER_SOURCEALPHA         0x2
+#define COLORMODIFIER_ONEMINUSSOURCEALPHA 0x3
+#define COLORMODIFIER_SOURCERED           0x4
+#define COLORMODIFIER_ONEMINUSSOURCERED   0x5
+#define COLORMODIFIER_SOURCEGREEN         0x8
+#define COLORMODIFIER_ONEMINUSSOURCEGREEN 0x9
+#define COLORMODIFIER_SOURCEBLUE          0xc
+#define COLORMODIFIER_ONEMINUSSOURCEBLUE  0xd
+
+#define ALPHAMODIFIER_SOURCEALPHA         0x0
+#define ALPHAMODIFIER_ONEMINUSSOURCEALPHA 0x1
+#define ALPHAMODIFIER_SOURCERED           0x2
+#define ALPHAMODIFIER_ONEMINUSSOURCERED   0x3
+#define ALPHAMODIFIER_SOURCEGREEN         0x4
+#define ALPHAMODIFIER_ONEMINUSSOURCEGREEN 0x5
+#define ALPHAMODIFIER_SOURCEBLUE          0x6
+#define ALPHAMODIFIER_ONEMINUSSOURCEBLUE  0x7
+
+#define OPERATION_REPLACE         0
+#define OPERATION_MODULATE        1
+#define OPERATION_ADD             2
+#define OPERATION_ADDSIGNED       3
+#define OPERATION_LERP            4
+#define OPERATION_SUBTRACT        5
+#define OPERATION_MULTIPLYTHENADD 8
+#define OPERATION_ADDTHENMULTIPLY 9
+
+#define COMPAREFUNC_NEVER              0
+#define COMPAREFUNC_ALWAYS             1
+#define COMPAREFUNC_EQUAL              2
+#define COMPAREFUNC_NOTEQUAL           3
+#define COMPAREFUNC_LESSTHAN           4
+#define COMPAREFUNC_LESSTHANOREQUAL    5
+#define COMPAREFUNC_GREATERTHAN        6
+#define COMPAREFUNC_GREATERTHANOREQUAL 7
+
+in vec4 o[NUM_VTX_ATTR];
 out vec4 color;
 
 uniform int alphatest_func;
@@ -99,9 +152,9 @@ struct TEVConfig
     bvec2 updates_combiner_buffer_color_alpha;
 };
 
-uniform TEVConfig tev_cfgs[6];
+uniform TEVConfig tev_cfgs[NUM_TEV_STAGES];
 
-uniform int out_maps[7*4];
+uniform int out_maps[NUM_VTX_ATTR * 4];
 
 vec4 g_combiner_buffer;
 vec4 g_last_tex_env_out;
@@ -112,33 +165,27 @@ float GetVal(int map_idx) {
 }
 
 vec4 GetSource(int source) {
-    if (source == 0) {
+    if (source == SOURCE_PRIMARYCOLOR) {
         // HACK: Should use values 8/9/10/11 but hurts framerate
+        // Hack assumes 9/10/11 follow directly after 8's map
         return o[out_maps[8] >> 2];
-    }
-    else if (source == 1) {
+    } else if (source == SOURCE_PRIMARYFRAGMENTCOLOR) {
+        // HACK: Uses color value, but should really use fragment lighting output
         return o[out_maps[8] >> 2];
-    }
-    else if (source == 3) {
+    } else if (source == SOURCE_TEXTURE0) {
         return texture(tex[0], vec2(GetVal(12), GetVal(13)));
-    }
-    else if (source == 4) {
+    } else if (source == SOURCE_TEXTURE1) {
         return texture(tex[1], vec2(GetVal(14), GetVal(15)));
-    }
-    else if (source == 5) {
+    } else if (source == SOURCE_TEXTURE2) {
         // TODO: Unverified
         return texture(tex[2], vec2(GetVal(16), GetVal(17)));
-    }
-    else if (source == 6) {
+    } else if (source == SOURCE_TEXTURE3) {
         // TODO: no 4th texture?
-    }
-    else if (source == 13) {
+    } else if (source == SOURCE_PREVIOUSBUFFER) {
         return g_combiner_buffer;
-    }
-    else if (source == 14) {
+    } else if (source == SOURCE_CONSTANT) {
         return g_const_color;
-    }
-    else if (source == 15) {
+    } else if (source == SOURCE_PREVIOUS) {
         return g_last_tex_env_out;
     }
 
@@ -146,34 +193,25 @@ vec4 GetSource(int source) {
 }
 
 vec3 GetColorModifier(int factor, vec4 color) {
-    if (factor == 0) {
+    if (factor == COLORMODIFIER_SOURCECOLOR) {
         return color.rgb;
-    }
-    else if (factor == 1) {
+    } else if (factor == COLORMODIFIER_ONEMINUSSOURCECOLOR) {
         return vec3(1.0, 1.0, 1.0) - color.rgb;
-    }
-    else if (factor == 2) {
+    } else if (factor == COLORMODIFIER_SOURCEALPHA) {
         return color.aaa;
-    }
-    else if (factor == 3) {
+    } else if (factor == COLORMODIFIER_ONEMINUSSOURCEALPHA) {
         return vec3(1.0, 1.0, 1.0) - color.aaa;
-    }
-    else if (factor == 4) {
+    } else if (factor == COLORMODIFIER_SOURCERED) {
         return color.rrr;
-    }
-    else if (factor == 5) {
+    } else if (factor == COLORMODIFIER_ONEMINUSSOURCERED) {
         return vec3(1.0, 1.0, 1.0) - color.rrr;
-    }
-    else if (factor == 8) {
+    } else if (factor == COLORMODIFIER_SOURCEGREEN) {
         return color.ggg;
-    }
-    else if (factor == 9) {
+    } else if (factor == COLORMODIFIER_ONEMINUSSOURCEGREEN) {
         return vec3(1.0, 1.0, 1.0) - color.ggg;
-    }
-    else if (factor == 12) {
+    } else if (factor == COLORMODIFIER_SOURCEBLUE) {
         return color.bbb;
-    }
-    else if (factor == 13) {
+    } else if (factor == COLORMODIFIER_ONEMINUSSOURCEBLUE) {
         return vec3(1.0, 1.0, 1.0) - color.bbb;
     }
 
@@ -181,28 +219,21 @@ vec3 GetColorModifier(int factor, vec4 color) {
 }
 
 float GetAlphaModifier(int factor, vec4 color) {
-    if (factor == 0) {
+    if (factor == ALPHAMODIFIER_SOURCEALPHA) {
         return color.a;
-    }
-    else if (factor == 1) {
+    } else if (factor == ALPHAMODIFIER_ONEMINUSSOURCEALPHA) {
         return 1.0 - color.a;
-    }
-    else if (factor == 2) {
+    } else if (factor == ALPHAMODIFIER_SOURCERED) {
         return color.r;
-    }
-    else if (factor == 3) {
+    } else if (factor == ALPHAMODIFIER_ONEMINUSSOURCERED) {
         return 1.0 - color.r;
-    }
-    else if (factor == 4) {
+    } else if (factor == ALPHAMODIFIER_SOURCEGREEN) {
         return color.g;
-    }
-    else if (factor == 5) {
+    } else if (factor == ALPHAMODIFIER_ONEMINUSSOURCEGREEN) {
         return 1.0 - color.g;
-    }
-    else if (factor == 6) {
+    } else if (factor == ALPHAMODIFIER_SOURCEBLUE) {
         return color.b;
-    }
-    else if (factor == 7) {
+    } else if (factor == ALPHAMODIFIER_ONEMINUSSOURCEBLUE) {
         return 1.0 - color.b;
     }
 
@@ -210,28 +241,21 @@ float GetAlphaModifier(int factor, vec4 color) {
 }
 
 vec3 ColorCombine(int op, vec3 color[3]) {
-    if (op == 0) {
+    if (op == OPERATION_REPLACE) {
         return color[0];
-    }
-    else if (op == 1) {
+    } else if (op == OPERATION_MODULATE) {
         return color[0] * color[1];
-    }
-    else if (op == 2) {
+    } else if (op == OPERATION_ADD) {
         return min(color[0] + color[1], 1.0);
-    }
-    else if (op == 3) {
+    } else if (op == OPERATION_ADDSIGNED) {
         return color[0] + color[1] - vec3(0.5, 0.5, 0.5);
-    }
-    else if (op == 4) {
+    } else if (op == OPERATION_LERP) {
         return color[0] * color[2] + color[1] * (vec3(1.0, 1.0, 1.0) - color[2]);
-    }
-    else if (op == 5) {
+    } else if (op == OPERATION_SUBTRACT) {
         return max(color[0] - color[1], 0.0);
-    }
-    else if (op == 8) {
+    } else if (op == OPERATION_MULTIPLYTHENADD) {
         return min(color[0] * color[1] + color[2], 1.0);
-    }
-    else if (op == 9) {
+    } else if (op == OPERATION_ADDTHENMULTIPLY) {
         return min(color[0] + color[1], 1.0) * color[2];
     }
 
@@ -239,28 +263,21 @@ vec3 ColorCombine(int op, vec3 color[3]) {
 }
 
 float AlphaCombine(int op, float alpha[3]) {
-    if (op == 0) {
+    if (op == OPERATION_REPLACE) {
         return alpha[0];
-    }
-    else if (op == 1) {
+    } else if (op == OPERATION_MODULATE) {
         return alpha[0] * alpha[1];
-    }
-    else if (op == 2) {
+    } else if (op == OPERATION_ADD) {
         return min(alpha[0] + alpha[1], 1.0);
-    }
-    else if (op == 3) {
+    } else if (op == OPERATION_ADDSIGNED) {
         return alpha[0] + alpha[1] - 0.5;
-    }
-    else if (op == 4) {
+    } else if (op == OPERATION_LERP) {
         return alpha[0] * alpha[2] + alpha[1] * (1.0 - alpha[2]);
-    }
-    else if (op == 5) {
+    } else if (op == OPERATION_SUBTRACT) {
         return max(alpha[0] - alpha[1], 0.0);
-    }
-    else if (op == 8) {
+    } else if (op == OPERATION_MULTIPLYTHENADD) {
         return min(alpha[0] * alpha[1] + alpha[2], 1.0);
-    }
-    else if (op == 9) {
+    } else if (op == OPERATION_ADDTHENMULTIPLY) {
         return min(alpha[0] + alpha[1], 1.0) * alpha[2];
     }
 
@@ -292,39 +309,35 @@ void ProcessTexEnv(int tex_env_idx) {
 }
 
 void main(void) {
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < NUM_TEV_STAGES; ++i) {
         ProcessTexEnv(i);
     }
 
-    if (alphatest_func == 0) {
+    if (alphatest_func == COMPAREFUNC_NEVER) {
         discard;
-    }
-    else if (alphatest_func == 2) {
+    } else if (alphatest_func == COMPAREFUNC_ALWAYS) {
+
+    } else if (alphatest_func == COMPAREFUNC_EQUAL) {
         if (g_last_tex_env_out.a != alphatest_ref) {
             discard;
         }
-    }
-    else if (alphatest_func == 3) {
+    } else if (alphatest_func == COMPAREFUNC_NOTEQUAL) {
         if (g_last_tex_env_out.a == alphatest_ref) {
             discard;
         }
-    }
-    else if (alphatest_func == 4) {
+    } else if (alphatest_func == COMPAREFUNC_LESSTHAN) {
         if (g_last_tex_env_out.a > alphatest_ref) {
             discard;
         }
-    }
-    else if (alphatest_func == 5) {
+    } else if (alphatest_func == COMPAREFUNC_LESSTHANOREQUAL) {
         if (g_last_tex_env_out.a >= alphatest_ref) {
             discard;
         }
-    }
-    else if (alphatest_func == 6) {
+    } else if (alphatest_func == COMPAREFUNC_GREATERTHAN) {
         if (g_last_tex_env_out.a < alphatest_ref) {
             discard;
         }
-    }
-    else if (alphatest_func == 7) {
+    } else if (alphatest_func == COMPAREFUNC_GREATERTHANOREQUAL) {
         if (g_last_tex_env_out.a <= alphatest_ref) {
             discard;
         }

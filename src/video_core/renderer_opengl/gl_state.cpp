@@ -31,9 +31,9 @@ OpenGLState::OpenGLState() {
     blend.color.blue = 0.0f;
     blend.color.alpha = 0.0f;
 
-    for (int i = 0; i < 3; i++) {
-        texture_unit[i].enabled_2d = false;
-        texture_unit[i].texture_2d = 0;
+    for (auto& texture_unit : texture_units) {
+        texture_unit.enabled_2d = false;
+        texture_unit.texture_2d = 0;
     }
 
     draw.framebuffer = 0;
@@ -42,7 +42,6 @@ OpenGLState::OpenGLState() {
     draw.shader_program = 0;
 }
 
-/// Apply this state as the current OpenGL state
 void OpenGLState::Apply() {
     // Culling
     if (cull.enabled) {
@@ -119,18 +118,18 @@ void OpenGLState::Apply() {
     }
 
     // Textures
-    for (int i = 0; i < 3; i++) {
-        if (texture_unit[i].enabled_2d) {
-            if (texture_unit[i].enabled_2d != texture_unit[i].enabled_2d) {
+    for (int i = 0; i < 3; ++i) {
+        if (texture_units[i].enabled_2d) {
+            if (texture_units[i].enabled_2d != texture_units[i].enabled_2d) {
                 glActiveTexture(GL_TEXTURE0 + i);
                 glEnable(GL_TEXTURE_2D);
             }
 
-            if (texture_unit[i].texture_2d != cur_state.texture_unit[i].texture_2d) {
+            if (texture_units[i].texture_2d != cur_state.texture_units[i].texture_2d) {
                 glActiveTexture(GL_TEXTURE0 + i);
-                glBindTexture(GL_TEXTURE_2D, texture_unit[i].texture_2d);
+                glBindTexture(GL_TEXTURE_2D, texture_units[i].texture_2d);
             }
-        } else if (texture_unit[i].enabled_2d != cur_state.texture_unit[i].enabled_2d) {
+        } else if (texture_units[i].enabled_2d != cur_state.texture_units[i].enabled_2d) {
             glActiveTexture(GL_TEXTURE0 + i);
             glDisable(GL_TEXTURE_2D);
         }

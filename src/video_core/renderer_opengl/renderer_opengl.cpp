@@ -143,8 +143,8 @@ void RendererOpenGL::LoadFBToActiveGLTexture(OpenGLState &state, const GPU::Regs
     // only allows rows to have a memory alignement of 4.
     ASSERT(pixel_stride % 4 == 0);
 
-    state.texture_unit[0].enabled_2d = true;
-    state.texture_unit[0].texture_2d = texture.handle;
+    state.texture_units[0].enabled_2d = true;
+    state.texture_units[0].texture_2d = texture.handle;
     state.Apply();
     
     glActiveTexture(GL_TEXTURE0);
@@ -168,8 +168,8 @@ void RendererOpenGL::LoadFBToActiveGLTexture(OpenGLState &state, const GPU::Regs
  */
 void RendererOpenGL::LoadColorToActiveGLTexture(OpenGLState &state, u8 color_r, u8 color_g, u8 color_b,
                                                 const TextureInfo& texture) {
-    state.texture_unit[0].enabled_2d = true;
-    state.texture_unit[0].texture_2d = texture.handle;
+    state.texture_units[0].enabled_2d = true;
+    state.texture_units[0].texture_2d = texture.handle;
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);
@@ -185,7 +185,7 @@ void RendererOpenGL::LoadColorToActiveGLTexture(OpenGLState &state, u8 color_r, 
 void RendererOpenGL::InitOpenGLObjects() {
     glClearColor(Settings::values.bg_red, Settings::values.bg_green, Settings::values.bg_blue, 0.0f);
     state.depth.test_enabled = false;
-    state.texture_unit[0].enabled_2d = true;
+    state.texture_units[0].enabled_2d = true;
 
     // Link shaders and get variable locations
     program_id = ShaderUtil::LoadShaders(GLShaders::g_vertex_shader, GLShaders::g_fragment_shader);
@@ -218,8 +218,8 @@ void RendererOpenGL::InitOpenGLObjects() {
         // Allocation of storage is deferred until the first frame, when we
         // know the framebuffer size.
 
-        state.texture_unit[0].enabled_2d = true;
-        state.texture_unit[0].texture_2d = texture.handle;
+        state.texture_units[0].enabled_2d = true;
+        state.texture_units[0].texture_2d = texture.handle;
         state.Apply();
 
         glActiveTexture(GL_TEXTURE0);
@@ -281,8 +281,8 @@ void RendererOpenGL::ConfigureFramebufferTexture(OpenGLState &state, TextureInfo
         UNIMPLEMENTED();
     }
 
-    state.texture_unit[0].enabled_2d = true;
-    state.texture_unit[0].texture_2d = texture.handle;
+    state.texture_units[0].enabled_2d = true;
+    state.texture_units[0].texture_2d = texture.handle;
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);
@@ -301,8 +301,8 @@ void RendererOpenGL::DrawSingleScreenRotated(const TextureInfo& texture, float x
         ScreenRectVertex(x+w, y+h, 0.f, 1.f),
     };
 
-    state.texture_unit[0].enabled_2d = true;
-    state.texture_unit[0].texture_2d = texture.handle;
+    state.texture_units[0].enabled_2d = true;
+    state.texture_units[0].texture_2d = texture.handle;
     state.Apply();
 
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices.data());
