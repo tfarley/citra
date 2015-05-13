@@ -146,6 +146,7 @@ private:
     GLuint uniform_alphatest_func;
     GLuint uniform_alphatest_ref;
     GLuint uniform_tex;
+    GLuint uniform_tev_combiner_buffer_color;
     TEVConfigUniforms uniform_tev_cfgs[6];
     GLuint uniform_out_maps;
     GLuint uniform_tex_envs;

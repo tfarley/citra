@@ -57,6 +57,8 @@ void RasterizerOpenGL::InitObjects() {
 
     uniform_tex = glGetUniformLocation(shader.GetHandle(), "tex");
 
+    uniform_tev_combiner_buffer_color = glGetUniformLocation(shader.GetHandle(), "tev_combiner_buffer_color");
+
     for (int i = 0; i < 6; ++i) {
         auto& uniform_tev = uniform_tev_cfgs[i];
 
@@ -490,6 +492,14 @@ void RasterizerOpenGL::SyncDrawState() {
             }
         }
     }
+
+    // Sync intial combiner buffer color
+    GLfloat initial_combiner_color[4] = { Pica::registers.tev_combiner_buffer_color.r / 255.0f,
+                                          Pica::registers.tev_combiner_buffer_color.g / 255.0f,
+                                          Pica::registers.tev_combiner_buffer_color.b / 255.0f,
+                                          Pica::registers.tev_combiner_buffer_color.a / 255.0f };
+
+    glUniform4fv(uniform_tev_combiner_buffer_color, 1, initial_combiner_color);
 
     // Sync texture environment configurations to hw shader
     const auto tev_stages = Pica::registers.GetTevStages();

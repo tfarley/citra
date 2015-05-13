@@ -140,6 +140,8 @@ uniform float alphatest_ref;
 
 uniform sampler2D tex[3];
 
+uniform vec4 tev_combiner_buffer_color;
+
 struct TEVConfig
 {
     ivec3 color_sources;
@@ -309,6 +311,8 @@ void ProcessTexEnv(int tex_env_idx) {
 }
 
 void main(void) {
+    g_combiner_buffer = tev_combiner_buffer_color;
+
     for (int i = 0; i < NUM_TEV_STAGES; ++i) {
         ProcessTexEnv(i);
     }
