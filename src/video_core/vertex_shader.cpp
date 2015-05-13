@@ -608,9 +608,9 @@ OutputVertex RunShader(const InputVertex& input, int num_attributes) {
     state.conditional_code[1] = false;
 
     ProcessShaderCode(state);
-    DebugUtils::DumpShader(shader_memory.data(), state.debug.max_offset, swizzle_data.data(),
-                           state.debug.max_opdesc_id, registers.vs_main_offset,
-                           registers.vs_output_attributes);
+    //DebugUtils::DumpShader(shader_memory.data(), state.debug.max_offset, swizzle_data.data(),
+    //                       state.debug.max_opdesc_id, registers.vs_main_offset,
+    //                       registers.vs_output_attributes);
 
     // Setup output data
     OutputVertex ret;
@@ -636,10 +636,10 @@ OutputVertex RunShader(const InputVertex& input, int num_attributes) {
         }
     }
 
-    LOG_TRACE(Render_Software, "Output vertex: pos (%.2f, %.2f, %.2f, %.2f), col(%.2f, %.2f, %.2f, %.2f), tc0(%.2f, %.2f)",
-        ret.pos.x.ToFloat32(), ret.pos.y.ToFloat32(), ret.pos.z.ToFloat32(), ret.pos.w.ToFloat32(),
-        ret.color.x.ToFloat32(), ret.color.y.ToFloat32(), ret.color.z.ToFloat32(), ret.color.w.ToFloat32(),
-        ret.tc0.u().ToFloat32(), ret.tc0.v().ToFloat32());
+    //LOG_TRACE(Render_Software, "Output vertex: pos (%.2f, %.2f, %.2f, %.2f), col(%.2f, %.2f, %.2f, %.2f), tc0(%.2f, %.2f)",
+    //    ret.pos.x.ToFloat32(), ret.pos.y.ToFloat32(), ret.pos.z.ToFloat32(), ret.pos.w.ToFloat32(),
+    //    ret.color.x.ToFloat32(), ret.color.y.ToFloat32(), ret.color.z.ToFloat32(), ret.color.w.ToFloat32(),
+    //    ret.tc0.u().ToFloat32(), ret.tc0.v().ToFloat32());
 
     return ret;
 }

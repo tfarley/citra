@@ -35,6 +35,141 @@ static u32 default_attr_write_buffer[3];
 
 Common::Profiling::TimingCategory category_drawing("Drawing");
 
+VertexShader::OutputVertex out_verts[10000];
+volatile bool thread_processing[3];
+volatile bool thread_regid;
+
+void ProcessBatch(int batch_num) {
+    const auto& attribute_config = registers.vertex_attributes;
+    const u32 base_address = attribute_config.GetPhysicalBaseAddress();
+
+    // Information about internal vertex attributes
+    u32 vertex_attribute_sources[16];
+    boost::fill(vertex_attribute_sources, 0xdeadbeef);
+    u32 vertex_attribute_strides[16];
+    Regs::VertexAttributeFormat vertex_attribute_formats[16];
+
+    u32 vertex_attribute_elements[16];
+    u32 vertex_attribute_element_size[16];
+
+    // Setup attribute data from loaders
+    for (int loader = 0; loader < 12; ++loader) {
+        const auto& loader_config = attribute_config.attribute_loaders[loader];
+
+        u32 load_address = base_address + loader_config.data_offset;
+
+        // TODO: What happens if a loader overwrites a previous one's data?
+        for (unsigned component = 0; component < loader_config.component_count; ++component) {
+            u32 attribute_index = loader_config.GetComponent(component);
+            vertex_attribute_sources[attribute_index] = load_address;
+            vertex_attribute_strides[attribute_index] = static_cast<u32>(loader_config.byte_count);
+            vertex_attribute_formats[attribute_index] = attribute_config.GetFormat(attribute_index);
+            vertex_attribute_elements[attribute_index] = attribute_config.GetNumElements(attribute_index);
+            vertex_attribute_element_size[attribute_index] = attribute_config.GetElementSizeInBytes(attribute_index);
+            load_address += attribute_config.GetStride(attribute_index);
+        }
+    }
+
+    // Load vertices
+    bool is_indexed = (thread_regid == PICA_REG_INDEX(trigger_draw_indexed));
+
+    const auto& index_info = registers.index_array;
+    const u8* index_address_8 = Memory::GetPhysicalPointer(base_address + index_info.offset);
+    const u16* index_address_16 = (u16*)index_address_8;
+    bool index_u16 = index_info.format != 0;
+
+    int chunk_size = registers.num_vertices / 4;
+
+    for (unsigned int index = chunk_size * batch_num; index < chunk_size * (batch_num + 1); ++index)
+    {
+        if (is_indexed) {
+            // TODO: Implement some sort of vertex cache!
+        }
+
+        // Initialize data for the current vertex
+        VertexShader::InputVertex input;
+
+        // Load a debugging token to check whether this gets loaded by the running
+        // application or not.
+        static const float24 debug_token = float24::FromRawFloat24(0x00abcdef);
+        input.attr[0].w = debug_token;
+
+        for (int i = 0; i < attribute_config.GetNumTotalAttributes(); ++i) {
+            if (attribute_config.IsDefaultAttribute(i)) {
+                input.attr[i] = VertexShader::GetDefaultAttribute(i);
+                //LOG_TRACE(HW_GPU, "Loaded default attribute %x for vertex %x (index %x): (%f, %f, %f, %f)",
+                //    i, vertex, index,
+                //    input.attr[i][0].ToFloat32(), input.attr[i][1].ToFloat32(),
+                //    input.attr[i][2].ToFloat32(), input.attr[i][3].ToFloat32());
+            }
+            else {
+                for (unsigned int comp = 0; comp < vertex_attribute_elements[i]; ++comp) {
+                    const u8* srcdata = Memory::GetPhysicalPointer(vertex_attribute_sources[i] + vertex_attribute_strides[i] * index + comp * vertex_attribute_element_size[i]);
+
+                    const float srcval = (vertex_attribute_formats[i] == Regs::VertexAttributeFormat::BYTE) ? *(s8*)srcdata :
+                        (vertex_attribute_formats[i] == Regs::VertexAttributeFormat::UBYTE) ? *(u8*)srcdata :
+                        (vertex_attribute_formats[i] == Regs::VertexAttributeFormat::SHORT) ? *(s16*)srcdata :
+                        *(float*)srcdata;
+
+                    input.attr[i][comp] = float24::FromFloat32(srcval);
+                    //LOG_TRACE(HW_GPU, "Loaded component %x of attribute %x for vertex %x (index %x) from 0x%08x + 0x%08lx + 0x%04lx: %f",
+                    //    comp, i, vertex, index,
+                    //    attribute_config.GetPhysicalBaseAddress(),
+                    //    vertex_attribute_sources[i] - base_address,
+                    //    vertex_attribute_strides[i] * vertex + comp * vertex_attribute_element_size[i],
+                    //    input.attr[i][comp].ToFloat32());
+                }
+            }
+        }
+
+        // HACK: Some games do not initialize the vertex position's w component. This leads
+        //       to critical issues since it messes up perspective division. As a
+        //       workaround, we force the fourth component to 1.0 if we find this to be the
+        //       case.
+        //       To do this, we additionally have to assume that the first input attribute
+        //       is the vertex position, since there's no information about this other than
+        //       the empiric observation that this is usually the case.
+        if (input.attr[0].w == debug_token)
+            input.attr[0].w = float24::FromFloat32(1.0);
+
+        //if (g_debug_context)
+        //    g_debug_context->OnEvent(DebugContext::Event::VertexLoaded, (void*)&input);
+
+        // NOTE: When dumping geometry, we simply assume that the first input attribute
+        //       corresponds to the position for now.
+        //DebugUtils::GeometryDumper::Vertex dumped_vertex = {
+        //    input.attr[0][0].ToFloat32(), input.attr[0][1].ToFloat32(), input.attr[0][2].ToFloat32()
+        //};
+        //using namespace std::placeholders;
+        //dumping_primitive_assembler.SubmitVertex(dumped_vertex,
+        //    std::bind(&DebugUtils::GeometryDumper::AddTriangle,
+        //    &geometry_dumper, _1, _2, _3));
+
+        // Send to vertex shader
+        out_verts[index] = VertexShader::RunShader(input, attribute_config.GetNumTotalAttributes());
+
+        if (is_indexed) {
+            // TODO: Add processed vertex to vertex cache!
+        }
+    }
+}
+
+void BatchThread(int batch_num) {
+    while (true) {
+        while (!thread_processing[batch_num - 1]) {
+            std::this_thread::yield();
+        }
+
+        ProcessBatch(batch_num);
+
+        thread_processing[batch_num - 1] = false;
+    }
+}
+
+std::thread t0(BatchThread, 1);
+std::thread t1(BatchThread, 2);
+std::thread t2(BatchThread, 3);
+
 static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
     if (id >= registers.NumIds())
@@ -65,10 +200,10 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
         {
             Common::Profiling::ScopeTimer scope_timer(category_drawing);
 
-            DebugUtils::DumpTevStageConfig(registers.GetTevStages());
+            //DebugUtils::DumpTevStageConfig(registers.GetTevStages());
 
-            if (g_debug_context)
-                g_debug_context->OnEvent(DebugContext::Event::IncomingPrimitiveBatch, nullptr);
+            //if (g_debug_context)
+            //    g_debug_context->OnEvent(DebugContext::Event::IncomingPrimitiveBatch, nullptr);
 
             const auto& attribute_config = registers.vertex_attributes;
             const u32 base_address = attribute_config.GetPhysicalBaseAddress();
@@ -110,9 +245,47 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
 
             DebugUtils::GeometryDumper geometry_dumper;
             PrimitiveAssembler<VertexShader::OutputVertex> primitive_assembler(registers.triangle_topology.Value());
-            PrimitiveAssembler<DebugUtils::GeometryDumper::Vertex> dumping_primitive_assembler(registers.triangle_topology.Value());
+            //PrimitiveAssembler<DebugUtils::GeometryDumper::Vertex> dumping_primitive_assembler(registers.triangle_topology.Value());
 
-            for (unsigned int index = 0; index < registers.num_vertices; ++index)
+            thread_regid = id;
+            thread_processing[0] = true;
+            thread_processing[1] = true;
+            thread_processing[2] = true;
+
+            ProcessBatch(0);
+
+            while (thread_processing[0]) {
+
+            }
+
+            while (thread_processing[1]) {
+
+            }
+
+            while (thread_processing[2]) {
+
+            }
+
+            // Submit verts
+            for (unsigned int index = 0; index < registers.num_vertices; ++index) {
+                unsigned int vertex = is_indexed ? (index_u16 ? index_address_16[index] : index_address_8[index]) : index;
+
+                if (Settings::values.use_hw_renderer) {
+                    // Send to hardware renderer
+                    static auto AddHWTriangle = [](const Pica::VertexShader::OutputVertex& v0,
+                                                    const Pica::VertexShader::OutputVertex& v1,
+                                                    const Pica::VertexShader::OutputVertex& v2) {
+                        VideoCore::g_renderer->hw_rasterizer->AddTriangle(v0, v1, v2);
+                    };
+                    
+                    primitive_assembler.SubmitVertex(out_verts[vertex], AddHWTriangle);
+                } else {
+                    // Send to triangle clipper
+                    primitive_assembler.SubmitVertex(out_verts[vertex], Clipper::ProcessTriangle);
+                }
+            }
+
+            /*for (unsigned int index = 0; index < registers.num_vertices; ++index)
             {
                 unsigned int vertex = is_indexed ? (index_u16 ? index_address_16[index] : index_address_8[index]) : index;
 
@@ -198,16 +371,16 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                     // Send to triangle clipper
                     primitive_assembler.SubmitVertex(output, Clipper::ProcessTriangle);
                 }
-            }
+            }*/
 
             if (Settings::values.use_hw_renderer) {
                 VideoCore::g_renderer->hw_rasterizer->DrawTriangles();
             }
 
-            geometry_dumper.Dump();
+            //geometry_dumper.Dump();
 
-            if (g_debug_context)
-                g_debug_context->OnEvent(DebugContext::Event::FinishedPrimitiveBatch, nullptr);
+            //if (g_debug_context)
+            //    g_debug_context->OnEvent(DebugContext::Event::FinishedPrimitiveBatch, nullptr);
 
             break;
         }
