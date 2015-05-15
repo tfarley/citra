@@ -130,6 +130,9 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                 static const float24 debug_token = float24::FromRawFloat24(0x00abcdef);
                 input.attr[0].w = debug_token;
 
+                static const float debug_token_f = 123.456f;
+                raw_vertex.attribs[0][3] = debug_token_f;
+
                 for (int i = 0; i < attribute_config.GetNumTotalAttributes(); ++i) {
                     if (attribute_config.IsDefaultAttribute(i)) {
                         auto default_attrib = VertexShader::GetDefaultAttribute(i);;
@@ -172,6 +175,9 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
                 //       the empiric observation that this is usually the case.
                 if (input.attr[0].w == debug_token)
                     input.attr[0].w = float24::FromFloat32(1.0);
+
+                if (raw_vertex.attribs[0][3] == debug_token_f)
+                    raw_vertex.attribs[0][3] = 1.0f;
 
                 if (g_debug_context)
                     g_debug_context->OnEvent(DebugContext::Event::VertexLoaded, (void*)&input);

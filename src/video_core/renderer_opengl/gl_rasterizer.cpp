@@ -127,7 +127,7 @@ void RasterizerOpenGL::InitObjects() {
     glUniform1i(uniform_tex + 2, 2);
 
     // Set vertex attributes
-    glVertexAttribPointer(attrib_position, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, position));
+    /*glVertexAttribPointer(attrib_position, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, position));
     glVertexAttribPointer(attrib_color, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, color));
     glVertexAttribPointer(attrib_texcoords, 2, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, tex_coord0));
     glVertexAttribPointer(attrib_texcoords + 1, 2, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, tex_coord1));
@@ -136,7 +136,7 @@ void RasterizerOpenGL::InitObjects() {
     glEnableVertexAttribArray(attrib_color);
     glEnableVertexAttribArray(attrib_texcoords);
     glEnableVertexAttribArray(attrib_texcoords + 1);
-    glEnableVertexAttribArray(attrib_texcoords + 2);
+    glEnableVertexAttribArray(attrib_texcoords + 2);*/
 
     // Create textures for OGL framebuffer that will be rendered to, initially 1x1 to succeed in framebuffer creation
     fb_color_texture.texture.Create();
@@ -552,7 +552,7 @@ void RasterizerOpenGL::SyncDrawState() {
 
     attrib_v = glGetAttribLocation(state.draw.shader_program, "v");
 
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 16; i++) {
         glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, sizeof(RawVertex), (GLvoid*)(i * 4 * sizeof(float)));
         glEnableVertexAttribArray(attrib_v + i);
     }
