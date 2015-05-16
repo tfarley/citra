@@ -2,7 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
-#include "core/mem_map.h"
+#include "core/memory.h"
 #include "video_core/renderer_opengl/gl_pica_to_gl.h"
 #include "video_core/renderer_opengl/gl_rasterizer_cache.h"
 #include "video_core/debug_utils/debug_utils.h"
