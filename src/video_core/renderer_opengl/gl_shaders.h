@@ -330,19 +330,19 @@ void main(void) {
             discard;
         }
     } else if (alphatest_func == COMPAREFUNC_LESSTHAN) {
-        if (g_last_tex_env_out.a > alphatest_ref) {
-            discard;
-        }
-    } else if (alphatest_func == COMPAREFUNC_LESSTHANOREQUAL) {
         if (g_last_tex_env_out.a >= alphatest_ref) {
             discard;
         }
+    } else if (alphatest_func == COMPAREFUNC_LESSTHANOREQUAL) {
+        if (g_last_tex_env_out.a > alphatest_ref) {
+            discard;
+        }
     } else if (alphatest_func == COMPAREFUNC_GREATERTHAN) {
-        if (g_last_tex_env_out.a < alphatest_ref) {
+        if (g_last_tex_env_out.a <= alphatest_ref) {
             discard;
         }
     } else if (alphatest_func == COMPAREFUNC_GREATERTHANOREQUAL) {
-        if (g_last_tex_env_out.a <= alphatest_ref) {
+        if (g_last_tex_env_out.a < alphatest_ref) {
             discard;
         }
     }
