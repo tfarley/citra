@@ -170,6 +170,9 @@ void RasterizerOpenGL::DrawTriangles() {
 }
 
 void RasterizerOpenGL::NotifyPreCopy(PAddr src_addr, u32 size) {
+    if (!Settings::values.use_hw_renderer)
+        return;
+
     render_window->MakeCurrent();
 
     state.Apply();
@@ -199,6 +202,9 @@ void RasterizerOpenGL::NotifyPreCopy(PAddr src_addr, u32 size) {
 }
 
 void RasterizerOpenGL::NotifyFlush(PAddr addr, u32 size) {
+    if (!Settings::values.use_hw_renderer)
+        return;
+
     render_window->MakeCurrent();
 
     state.Apply();
@@ -538,7 +544,7 @@ void RasterizerOpenGL::SyncDrawState() {
 }
 
 void RasterizerOpenGL::ReloadColorBuffer() {
-    u8* color_buffer = Memory::GetPhysicalPointer(last_fb_color_addr);
+    u8* color_buffer = Memory::GetPhysicalPointer(Pica::registers.framebuffer.GetColorBufferPhysicalAddress());
 
     if (color_buffer == nullptr)
         return;
@@ -571,7 +577,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
 
 void RasterizerOpenGL::ReloadDepthBuffer() {
     // TODO: Appears to work, but double-check endianness of depth values and order of depth-stencil
-    u8* depth_buffer = Memory::GetPhysicalPointer(last_fb_depth_addr);
+    u8* depth_buffer = Memory::GetPhysicalPointer(Pica::registers.framebuffer.GetDepthBufferPhysicalAddress());
 
     if (depth_buffer == nullptr) {
         return;
