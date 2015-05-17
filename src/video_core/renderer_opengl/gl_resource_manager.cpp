@@ -5,20 +5,11 @@
 #include "video_core/renderer_opengl/gl_resource_manager.h"
 #include "video_core/renderer_opengl/gl_shader_util.h"
 
-// OGLResource base class
-OGLResource::OGLResource() : handle(0) {
-    
-}
-
-OGLResource::~OGLResource() {
-
-}
-
-void OGLResource::Release() {
-    
-}
-
 // Textures
+OGLTexture::OGLTexture() : handle(0) {
+
+}
+
 OGLTexture::~OGLTexture() {
     Release();
 }
@@ -37,6 +28,10 @@ void OGLTexture::Release() {
 }
 
 // Shaders
+OGLShader::OGLShader() : handle(0) {
+
+}
+
 OGLShader::~OGLShader() {
     Release();
 }
@@ -55,6 +50,10 @@ void OGLShader::Release() {
 }
 
 // Buffer objects
+OGLBuffer::OGLBuffer() : handle(0) {
+
+}
+
 OGLBuffer::~OGLBuffer() {
     Release();
 }
@@ -73,6 +72,10 @@ void OGLBuffer::Release() {
 }
 
 // Vertex array objects
+OGLVertexArray::OGLVertexArray() : handle(0) {
+
+}
+
 OGLVertexArray::~OGLVertexArray() {
     Release();
 }
@@ -91,6 +94,10 @@ void OGLVertexArray::Release() {
 }
 
 // Framebuffers
+OGLFramebuffer::OGLFramebuffer() : handle(0) {
+
+}
+
 OGLFramebuffer::~OGLFramebuffer() {
     Release();
 }

@@ -17,32 +17,12 @@
 
 #include <memory>
 
-u32 ColorFormatBytesPerPixel(u32 format) {
-    switch (format) {
-    case Pica::registers.framebuffer.RGBA8:
-        return 4;
-    case Pica::registers.framebuffer.RGB8:
-        return 3;
-    case Pica::registers.framebuffer.RGB5A1:
-    case Pica::registers.framebuffer.RGB565:
-    case Pica::registers.framebuffer.RGBA4:
-        return 2;
-    default:
-        LOG_CRITICAL(Render_OpenGL, "Unknown framebuffer color format %x", format);
-        UNIMPLEMENTED();
-        break;
-    }
-
-    return 0;
-}
-
 RasterizerOpenGL::RasterizerOpenGL() : last_fb_color_addr(0), last_fb_depth_addr(0) {
 
 }
 
 RasterizerOpenGL::~RasterizerOpenGL() {
-    // Set context for automatic resource destruction
-    render_window->MakeCurrent();
+
 }
 
 void RasterizerOpenGL::InitObjects() {
@@ -109,7 +89,7 @@ void RasterizerOpenGL::InitObjects() {
 
     // Create textures for OGL framebuffer that will be rendered to, initially 1x1 to succeed in framebuffer creation
     fb_color_texture.texture.Create();
-    ReconfigColorTexture(fb_color_texture, Pica::registers.framebuffer.RGBA8, 1, 1);
+    ReconfigureColorTexture(fb_color_texture, Pica::registers.framebuffer.RGBA8, 1, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -117,7 +97,7 @@ void RasterizerOpenGL::InitObjects() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     fb_depth_texture.texture.Create();
-    ReconfigDepthTexture(fb_depth_texture, Pica::Regs::DepthFormat::D16, 1, 1);
+    ReconfigureDepthTexture(fb_depth_texture, Pica::Regs::DepthFormat::D16, 1, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -138,13 +118,8 @@ void RasterizerOpenGL::InitObjects() {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb_color_texture.texture.GetHandle(), 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.texture.GetHandle(), 0);
 
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        LOG_CRITICAL(Render_OpenGL, "Framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
-    }
-}
-
-void RasterizerOpenGL::SetWindow(EmuWindow* window) {
-    render_window = window;
+    ASSERT_MSG(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE,
+               "OpenGL rasterizer framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
 }
 
 void RasterizerOpenGL::AddTriangle(const Pica::VertexShader::OutputVertex& v0,
@@ -156,8 +131,6 @@ void RasterizerOpenGL::AddTriangle(const Pica::VertexShader::OutputVertex& v0,
 }
 
 void RasterizerOpenGL::DrawTriangles() {
-    render_window->MakeCurrent();
-
     state.Apply();
 
     SyncFramebuffer();
@@ -169,16 +142,14 @@ void RasterizerOpenGL::DrawTriangles() {
     vertex_batch.clear();
 }
 
-void RasterizerOpenGL::NotifyPreCopy(PAddr src_addr, u32 size) {
+void RasterizerOpenGL::NotifyPreRead(PAddr addr, u32 size) {
     if (!Settings::values.use_hw_renderer)
         return;
-
-    render_window->MakeCurrent();
 
     state.Apply();
 
     PAddr cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-    u32 cur_fb_color_size = ColorFormatBytesPerPixel(Pica::registers.framebuffer.color_format)
+    u32 cur_fb_color_size = Pica::registers.framebuffer.BytesPerColorPixel(Pica::registers.framebuffer.color_format)
                             * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
 
     PAddr cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
@@ -186,18 +157,18 @@ void RasterizerOpenGL::NotifyPreCopy(PAddr src_addr, u32 size) {
                             * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
 
     // If source memory region overlaps 3DS framebuffers, commit them before the copy happens
-    PAddr max_low_addr_bound = std::max(src_addr, cur_fb_color_addr);
-    PAddr min_hi_addr_bound = std::min(src_addr + size, cur_fb_color_addr + cur_fb_color_size);
+    PAddr max_low_addr_bound = std::max(addr, cur_fb_color_addr);
+    PAddr min_hi_addr_bound = std::min(addr + size, cur_fb_color_addr + cur_fb_color_size);
 
     if (max_low_addr_bound <= min_hi_addr_bound) {
-        CommitFramebuffer();
+        CommitColorBuffer();
     }
 
-    max_low_addr_bound = std::max(src_addr, cur_fb_depth_addr);
-    min_hi_addr_bound = std::min(src_addr + size, cur_fb_depth_addr + cur_fb_depth_size);
+    max_low_addr_bound = std::max(addr, cur_fb_depth_addr);
+    min_hi_addr_bound = std::min(addr + size, cur_fb_depth_addr + cur_fb_depth_size);
 
     if (max_low_addr_bound <= min_hi_addr_bound) {
-        CommitFramebuffer();
+        CommitDepthBuffer();
     }
 }
 
@@ -205,12 +176,10 @@ void RasterizerOpenGL::NotifyFlush(PAddr addr, u32 size) {
     if (!Settings::values.use_hw_renderer)
         return;
 
-    render_window->MakeCurrent();
-
     state.Apply();
 
     PAddr cur_fb_color_addr = Pica::registers.framebuffer.GetColorBufferPhysicalAddress();
-    u32 cur_fb_color_size = ColorFormatBytesPerPixel(Pica::registers.framebuffer.color_format)
+    u32 cur_fb_color_size = Pica::registers.framebuffer.BytesPerColorPixel(Pica::registers.framebuffer.color_format)
                             * Pica::registers.framebuffer.GetWidth() * Pica::registers.framebuffer.GetHeight();
 
     PAddr cur_fb_depth_addr = Pica::registers.framebuffer.GetDepthBufferPhysicalAddress();
@@ -236,7 +205,7 @@ void RasterizerOpenGL::NotifyFlush(PAddr addr, u32 size) {
     res_cache.NotifyFlush(addr, size);
 }
 
-void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, u32 format, u32 width, u32 height) {
+void RasterizerOpenGL::ReconfigureColorTexture(TextureInfo& texture, u32 format, u32 width, u32 height) {
     GLint internal_format;
 
     texture.format = format;
@@ -293,7 +262,7 @@ void RasterizerOpenGL::ReconfigColorTexture(TextureInfo& texture, u32 format, u3
         texture.gl_format, texture.gl_type, nullptr);
 }
 
-void RasterizerOpenGL::ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height) {
+void RasterizerOpenGL::ReconfigureDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height) {
     GLint internal_format;
 
     texture.format = format;
@@ -351,15 +320,16 @@ void RasterizerOpenGL::SyncFramebuffer() {
 
     // Commit if fb modified in any way
     if (fb_modified) {
-        CommitFramebuffer();
+        CommitColorBuffer();
+        CommitDepthBuffer();
     }
 
     // Reconfigure framebuffer textures if any property has changed
     if (fb_prop_changed) {
-        ReconfigColorTexture(fb_color_texture, new_fb_color_format,
+        ReconfigureColorTexture(fb_color_texture, new_fb_color_format,
                                 Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
 
-        ReconfigDepthTexture(fb_depth_texture, new_fb_depth_format,
+        ReconfigureDepthTexture(fb_depth_texture, new_fb_depth_format,
                                 Pica::registers.framebuffer.GetWidth(), Pica::registers.framebuffer.GetHeight());
 
         // Only attach depth buffer as stencil if it supports stencil
@@ -384,10 +354,6 @@ void RasterizerOpenGL::SyncFramebuffer() {
     if (fb_modified) {
         last_fb_color_addr = cur_fb_color_addr;
         last_fb_depth_addr = cur_fb_depth_addr;
-
-        // Currently not needed b/c of reloading buffers below, but will be needed for high-res rendering
-        //glDepthMask(GL_TRUE);
-        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ReloadColorBuffer();
         ReloadDepthBuffer();
@@ -549,7 +515,7 @@ void RasterizerOpenGL::ReloadColorBuffer() {
     if (color_buffer == nullptr)
         return;
 
-    u32 bytes_per_pixel = ColorFormatBytesPerPixel(fb_color_texture.format);
+    u32 bytes_per_pixel = Pica::registers.framebuffer.BytesPerColorPixel(fb_color_texture.format);
 
     std::unique_ptr<u8[]> temp_fb_color_buffer(new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel]);
 
@@ -626,12 +592,12 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
                     fb_depth_texture.gl_format, fb_depth_texture.gl_type, temp_fb_depth_buffer.get());
 }
 
-void RasterizerOpenGL::CommitFramebuffer() {
+void RasterizerOpenGL::CommitColorBuffer() {
     if (last_fb_color_addr != 0) {
         u8* color_buffer = Memory::GetPhysicalPointer(last_fb_color_addr);
 
         if (color_buffer != nullptr) {
-            u32 bytes_per_pixel = ColorFormatBytesPerPixel(fb_color_texture.format);
+            u32 bytes_per_pixel = Pica::registers.framebuffer.BytesPerColorPixel(fb_color_texture.format);
 
             std::unique_ptr<u8[]> temp_gl_color_buffer(new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel]);
 
@@ -656,7 +622,9 @@ void RasterizerOpenGL::CommitFramebuffer() {
             }
         }
     }
+}
 
+void RasterizerOpenGL::CommitDepthBuffer() {
     if (last_fb_depth_addr != 0) {
         // TODO: Output seems correct visually, but doesn't quite match sw renderer output. One of them is wrong.
         u8* depth_buffer = Memory::GetPhysicalPointer(last_fb_depth_addr);

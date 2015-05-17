@@ -131,10 +131,10 @@ inline void Write(u32 addr, const T data) {
             u32 output_width = config.output_width / horizontal_scale;
             u32 output_height = config.output_height / vertical_scale;
 
-            u32 input_size = config.input_height.Value() * config.input_width.Value() * GPU::Regs::BytesPerPixel(config.input_format.Value());
-            u32 output_size = output_height * output_width * GPU::Regs::BytesPerPixel(config.output_format.Value());
+            u32 input_size = config.input_height * config.input_width * GPU::Regs::BytesPerPixel(config.input_format);
+            u32 output_size = output_height * output_width * GPU::Regs::BytesPerPixel(config.output_format);
 
-            VideoCore::g_renderer->hw_rasterizer->NotifyPreCopy(config.GetPhysicalInputAddress(), input_size);
+            VideoCore::g_renderer->hw_rasterizer->NotifyPreRead(config.GetPhysicalInputAddress(), input_size);
 
             if (config.raw_copy) {
                 // Raw copies do not perform color conversion nor tiled->linear / linear->tiled conversions

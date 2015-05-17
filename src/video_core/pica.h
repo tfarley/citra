@@ -500,6 +500,23 @@ struct Regs {
             RGBA4    = 4,
         };
 
+        // Returns the number of bytes in the specified color format
+        static unsigned BytesPerColorPixel(u32 format) {
+            switch (format) {
+            case ColorFormat::RGBA8:
+                return 4;
+            case ColorFormat::RGB8:
+                return 3;
+            case ColorFormat::RGB5A1:
+            case ColorFormat::RGB565:
+            case ColorFormat::RGBA4:
+                return 2;
+            default:
+                LOG_CRITICAL(HW_GPU, "Unknown color format %u", format);
+                UNIMPLEMENTED();
+            }
+        }
+
         INSERT_PADDING_WORDS(0x6);
 
         DepthFormat depth_format;

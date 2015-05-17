@@ -18,10 +18,7 @@ public:
     /// Initialize API-specific GPU objects
     void InitObjects() override;
 
-    /// Set the window (context) to draw with
-    void SetWindow(EmuWindow* window) override;
-
-    /// Converts the triangle verts to hardware data format and adds them to the current batch
+    /// Queues the primitive formed by the given vertices for rendering
     void AddTriangle(const Pica::VertexShader::OutputVertex& v0,
                      const Pica::VertexShader::OutputVertex& v1,
                      const Pica::VertexShader::OutputVertex& v2) override;
@@ -29,8 +26,8 @@ public:
     /// Draw the current batch of triangles
     void DrawTriangles() override;
 
-    /// Notify rasterizer that a copy within 3DS memory will occur after this notification
-    void NotifyPreCopy(PAddr src_addr, u32 size) override;
+    /// Notify rasterizer that the specified 3DS memory region will be read from after this notification
+    void NotifyPreRead(PAddr addr, u32 size) override;
 
     /// Notify rasterizer that a 3DS memory region has been changed
     void NotifyFlush(PAddr addr, u32 size) override;
@@ -95,10 +92,10 @@ private:
     };
 
     /// Reconfigure the OpenGL color texture to use the given format and dimensions
-    void ReconfigColorTexture(TextureInfo& texture, u32 format, u32 width, u32 height);
+    void ReconfigureColorTexture(TextureInfo& texture, u32 format, u32 width, u32 height);
 
     /// Reconfigure the OpenGL depth texture to use the given format and dimensions
-    void ReconfigDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height);
+    void ReconfigureDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height);
 
     /// Syncs the state and contents of the OpenGL framebuffer to match the current PICA framebuffer
     void SyncFramebuffer();
@@ -113,13 +110,19 @@ private:
     void ReloadDepthBuffer();
 
     /**
-     * Save the current OpenGL framebuffer to the current PICA framebuffer in 3ds memory
+     * Save the current OpenGL color framebuffer to the current PICA framebuffer in 3ds memory
      * Loads the OpenGL framebuffer textures into temporary buffers
      * Then copies into the 3ds framebuffer using proper Morton order
      */
-    void CommitFramebuffer();
+    void CommitColorBuffer();
 
-    EmuWindow* render_window;
+    /**
+     * Save the current OpenGL depth framebuffer to the current PICA framebuffer in 3ds memory
+     * Loads the OpenGL framebuffer textures into temporary buffers
+     * Then copies into the 3ds framebuffer using proper Morton order
+     */
+    void CommitDepthBuffer();
+
     RasterizerCacheOpenGL res_cache;
 
     std::vector<HardwareVertex> vertex_batch;

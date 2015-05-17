@@ -2,7 +2,10 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include "common/make_unique.h"
+
 #include "core/memory.h"
+
 #include "video_core/renderer_opengl/gl_pica_to_gl.h"
 #include "video_core/renderer_opengl/gl_rasterizer_cache.h"
 #include "video_core/debug_utils/debug_utils.h"
@@ -21,7 +24,7 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
         state.texture_units[texture_unit].texture_2d = cached_texture->second->texture.GetHandle();
         state.Apply();
     } else {
-        std::unique_ptr<CachedTexture> new_texture(new CachedTexture());
+        std::unique_ptr<CachedTexture> new_texture = Common::make_unique<CachedTexture>();
 
         new_texture->texture.Create();
         state.texture_units[texture_unit].texture_2d = new_texture->texture.GetHandle();
@@ -31,8 +34,8 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, PicaToGL::WrapMode(config.config.wrap_s.Value()));
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, PicaToGL::WrapMode(config.config.wrap_t.Value()));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, PicaToGL::WrapMode(config.config.wrap_s));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, PicaToGL::WrapMode(config.config.wrap_t));
 
         const auto info = Pica::DebugUtils::TextureInfo::FromPicaRegister(config.config, config.format);
 
@@ -40,11 +43,12 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
         new_texture->height = info.height;
         new_texture->size = info.width * info.height * Pica::Regs::NibblesPerPixel(info.format);
 
+        u8* texture_src_data = Memory::GetPhysicalPointer(texture_addr);
         std::unique_ptr<Math::Vec4<u8>[]> temp_texture_buffer_rgba(new Math::Vec4<u8>[info.width * info.height]);
 
         for (int y = 0; y < info.height; ++y) {
             for (int x = 0; x < info.width; ++x) {
-                temp_texture_buffer_rgba[x + info.width * y] = Pica::DebugUtils::LookupTexture(Memory::GetPhysicalPointer(texture_addr), x, info.height - 1 - y, info);
+                temp_texture_buffer_rgba[x + info.width * y] = Pica::DebugUtils::LookupTexture(texture_src_data, x, info.height - 1 - y, info);
             }
         }
 
@@ -56,7 +60,7 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
 
 void RasterizerCacheOpenGL::NotifyFlush(PAddr addr, u32 size) {
     // Flush any texture that falls in the flushed region
-    for (auto it = texture_cache.begin(); it != texture_cache.end();) {
+    for (auto it = texture_cache.begin(); it != texture_cache.upper_bound(addr + size);) {
         PAddr max_low_addr_bound = std::max(addr, it->first);
         PAddr min_hi_addr_bound = std::min(addr + size, it->first + it->second->size);
 

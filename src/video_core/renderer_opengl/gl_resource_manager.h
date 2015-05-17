@@ -8,74 +8,102 @@
 
 #include "generated/gl_3_2_core.h"
 
-class OGLResource : NonCopyable {
+class OGLTexture : public NonCopyable {
 public:
-    OGLResource();
-    virtual ~OGLResource();
+    OGLTexture();
+    ~OGLTexture();
 
     /// Returns the internal OpenGL resource handle for this resource
     inline GLuint GetHandle() {
         return handle;
     }
 
+    /// Creates a new internal OpenGL resource and stores the handle
+    void Create();
+
     /// Deletes the internal OpenGL resource
-    virtual void Release();
+    void Release();
 
 protected:
     GLuint handle;
 };
 
-class OGLTexture : public OGLResource {
+class OGLShader : public NonCopyable {
 public:
-    ~OGLTexture() override;
+    OGLShader();
+    ~OGLShader();
 
-    /// Creates a new internal OpenGL resource and stores the handle
-    void Create();
-
-    /// Deletes the internal OpenGL resource
-    void Release() override;
-};
-
-class OGLShader : public OGLResource {
-public:
-    ~OGLShader() override;
+    /// Returns the internal OpenGL resource handle for this resource
+    inline GLuint GetHandle() {
+        return handle;
+    }
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create(const char* vert_shader, const char* frag_shader);
 
     /// Deletes the internal OpenGL resource
-    void Release() override;
+    void Release();
+
+protected:
+    GLuint handle;
 };
 
-class OGLBuffer : public OGLResource {
+class OGLBuffer : public NonCopyable {
 public:
-    ~OGLBuffer() override;
+    OGLBuffer();
+    ~OGLBuffer();
+
+    /// Returns the internal OpenGL resource handle for this resource
+    inline GLuint GetHandle() {
+        return handle;
+    }
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create();
 
     /// Deletes the internal OpenGL resource
-    void Release() override;
+    void Release();
+
+protected:
+    GLuint handle;
 };
 
-class OGLVertexArray : public OGLResource {
+class OGLVertexArray : public NonCopyable {
 public:
-    ~OGLVertexArray() override;
+    OGLVertexArray();
+    ~OGLVertexArray();
+
+    /// Returns the internal OpenGL resource handle for this resource
+    inline GLuint GetHandle() {
+        return handle;
+    }
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create();
 
     /// Deletes the internal OpenGL resource
-    void Release() override;
+    void Release();
+
+protected:
+    GLuint handle;
 };
 
-class OGLFramebuffer : public OGLResource {
+class OGLFramebuffer : public NonCopyable {
 public:
-    ~OGLFramebuffer() override;
+    OGLFramebuffer();
+    ~OGLFramebuffer();
+
+    /// Returns the internal OpenGL resource handle for this resource
+    inline GLuint GetHandle() {
+        return handle;
+    }
 
     /// Creates a new internal OpenGL resource and stores the handle
     void Create();
 
     /// Deletes the internal OpenGL resource
-    void Release() override;
+    void Release();
+
+protected:
+    GLuint handle;
 };

@@ -191,33 +191,33 @@ vec4 GetSource(int source) {
         return g_last_tex_env_out;
     }
 
-    return vec4(0.0, 0.0, 0.0, 0.0);
+    return vec4(0.0);
 }
 
 vec3 GetColorModifier(int factor, vec4 color) {
     if (factor == COLORMODIFIER_SOURCECOLOR) {
         return color.rgb;
     } else if (factor == COLORMODIFIER_ONEMINUSSOURCECOLOR) {
-        return vec3(1.0, 1.0, 1.0) - color.rgb;
+        return vec3(1.0) - color.rgb;
     } else if (factor == COLORMODIFIER_SOURCEALPHA) {
         return color.aaa;
     } else if (factor == COLORMODIFIER_ONEMINUSSOURCEALPHA) {
-        return vec3(1.0, 1.0, 1.0) - color.aaa;
+        return vec3(1.0) - color.aaa;
     } else if (factor == COLORMODIFIER_SOURCERED) {
         return color.rrr;
     } else if (factor == COLORMODIFIER_ONEMINUSSOURCERED) {
-        return vec3(1.0, 1.0, 1.0) - color.rrr;
+        return vec3(1.0) - color.rrr;
     } else if (factor == COLORMODIFIER_SOURCEGREEN) {
         return color.ggg;
     } else if (factor == COLORMODIFIER_ONEMINUSSOURCEGREEN) {
-        return vec3(1.0, 1.0, 1.0) - color.ggg;
+        return vec3(1.0) - color.ggg;
     } else if (factor == COLORMODIFIER_SOURCEBLUE) {
         return color.bbb;
     } else if (factor == COLORMODIFIER_ONEMINUSSOURCEBLUE) {
-        return vec3(1.0, 1.0, 1.0) - color.bbb;
+        return vec3(1.0) - color.bbb;
     }
 
-    return vec3(0.0, 0.0, 0.0);
+    return vec3(0.0);
 }
 
 float GetAlphaModifier(int factor, vec4 color) {
@@ -250,9 +250,9 @@ vec3 ColorCombine(int op, vec3 color[3]) {
     } else if (op == OPERATION_ADD) {
         return min(color[0] + color[1], 1.0);
     } else if (op == OPERATION_ADDSIGNED) {
-        return clamp(color[0] + color[1] - vec3(0.5, 0.5, 0.5), 0.0, 1.0);
+        return clamp(color[0] + color[1] - vec3(0.5), 0.0, 1.0);
     } else if (op == OPERATION_LERP) {
-        return color[0] * color[2] + color[1] * (vec3(1.0, 1.0, 1.0) - color[2]);
+        return color[0] * color[2] + color[1] * (vec3(1.0) - color[2]);
     } else if (op == OPERATION_SUBTRACT) {
         return max(color[0] - color[1], 0.0);
     } else if (op == OPERATION_MULTIPLYTHENADD) {
@@ -261,7 +261,7 @@ vec3 ColorCombine(int op, vec3 color[3]) {
         return min(color[0] + color[1], 1.0) * color[2];
     }
 
-    return vec3(0.0, 0.0, 0.0);
+    return vec3(0.0);
 }
 
 float AlphaCombine(int op, float alpha[3]) {

@@ -12,83 +12,86 @@
 
 namespace PicaToGL {
 
-static GLenum WrapMode(Pica::Regs::TextureConfig::WrapMode mode) {
-    switch (mode) {
-    case Pica::Regs::TextureConfig::WrapMode::ClampToEdge:
+inline GLenum WrapMode(Pica::Regs::TextureConfig::WrapMode mode) {
+    static const GLenum wrap_mode_table[] = {
+        GL_CLAMP_TO_EDGE,  // WrapMode::ClampToEdge
+        0,                 // Unknown
+        GL_REPEAT,         // WrapMode::Repeat
+        GL_MIRRORED_REPEAT // WrapMode::MirroredRepeat
+    };
+
+    // Range check table for input
+    if (mode >= sizeof(wrap_mode_table) / sizeof(GLenum)) {
+        LOG_CRITICAL(Render_OpenGL, "Unknown texture wrap mode %d", mode);
+        UNREACHABLE();
+
         return GL_CLAMP_TO_EDGE;
-    case Pica::Regs::TextureConfig::WrapMode::Repeat:
-        return GL_REPEAT;
-    case Pica::Regs::TextureConfig::WrapMode::MirroredRepeat:
-        return GL_MIRRORED_REPEAT;
-    default:
+    }
+
+    GLenum gl_mode = wrap_mode_table[mode];
+
+    // Check for dummy values indicating an unknown mode
+    if (gl_mode == 0) {
         LOG_CRITICAL(Render_OpenGL, "Unknown texture wrap mode %d", mode);
         UNIMPLEMENTED();
+
         return GL_CLAMP_TO_EDGE;
     }
+
+    return gl_mode;
 }
 
-static GLenum BlendFunc(u32 factor) {
-    switch (factor) {
-    case Pica::registers.output_merger.alpha_blending.Zero:
-        return GL_ZERO;
-    case Pica::registers.output_merger.alpha_blending.One:
-        return GL_ONE;
-    case Pica::registers.output_merger.alpha_blending.SourceColor:
-        return GL_SRC_COLOR;
-    case Pica::registers.output_merger.alpha_blending.OneMinusSourceColor:
-        return GL_ONE_MINUS_SRC_COLOR;
-    case Pica::registers.output_merger.alpha_blending.DestColor:
-        return GL_DST_COLOR;
-    case Pica::registers.output_merger.alpha_blending.OneMinusDestColor:
-        return GL_ONE_MINUS_DST_COLOR;
-    case Pica::registers.output_merger.alpha_blending.SourceAlpha:
-        return GL_SRC_ALPHA;
-    case Pica::registers.output_merger.alpha_blending.OneMinusSourceAlpha:
-        return GL_ONE_MINUS_SRC_ALPHA;
-    case Pica::registers.output_merger.alpha_blending.DestAlpha:
-        return GL_DST_ALPHA;
-    case Pica::registers.output_merger.alpha_blending.OneMinusDestAlpha:
-        return GL_ONE_MINUS_DST_ALPHA;
-    case Pica::registers.output_merger.alpha_blending.ConstantColor:
-        return GL_CONSTANT_COLOR;
-    case Pica::registers.output_merger.alpha_blending.OneMinusConstantColor:
-        return GL_ONE_MINUS_CONSTANT_COLOR;
-    case Pica::registers.output_merger.alpha_blending.ConstantAlpha:
-        return GL_CONSTANT_ALPHA;
-    case Pica::registers.output_merger.alpha_blending.OneMinusConstantAlpha:
-        return GL_ONE_MINUS_CONSTANT_ALPHA;
-    case Pica::registers.output_merger.alpha_blending.SourceAlphaSaturate:
-        return GL_SRC_ALPHA_SATURATE;
-    default:
+inline GLenum BlendFunc(u32 factor) {
+    static const GLenum blend_func_table[] = {
+        GL_ZERO,                     // BlendFactor::Zero
+        GL_ONE,                      // BlendFactor::One
+        GL_SRC_COLOR,                // BlendFactor::SourceColor
+        GL_ONE_MINUS_SRC_COLOR,      // BlendFactor::OneMinusSourceColor
+        GL_DST_COLOR,                // BlendFactor::DestColor
+        GL_ONE_MINUS_DST_COLOR,      // BlendFactor::OneMinusDestColor
+        GL_SRC_ALPHA,                // BlendFactor::SourceAlpha
+        GL_ONE_MINUS_SRC_ALPHA,      // BlendFactor::OneMinusSourceAlpha
+        GL_DST_ALPHA,                // BlendFactor::DestAlpha
+        GL_ONE_MINUS_DST_ALPHA,      // BlendFactor::OneMinusDestAlpha
+        GL_CONSTANT_COLOR,           // BlendFactor::ConstantColor
+        GL_ONE_MINUS_CONSTANT_COLOR, // BlendFactor::OneMinusConstantColor
+        GL_CONSTANT_ALPHA,           // BlendFactor::ConstantAlpha
+        GL_ONE_MINUS_CONSTANT_ALPHA, // BlendFactor::OneMinusConstantAlpha
+        GL_SRC_ALPHA_SATURATE,       // BlendFactor::SourceAlphaSaturate
+    };
+
+    // Range check table for input
+    if (factor >= sizeof(blend_func_table) / sizeof(GLenum)) {
         LOG_CRITICAL(Render_OpenGL, "Unknown blend factor %d", factor);
-        UNIMPLEMENTED();
+        UNREACHABLE();
+
         return GL_ONE;
     }
+
+    return blend_func_table[factor];
 }
 
-static GLenum CompareFunc(u32 func) {
-    switch (func) {
-    case Pica::registers.output_merger.Never:
-        return GL_NEVER;
-    case Pica::registers.output_merger.Always:
-        return GL_ALWAYS;
-    case Pica::registers.output_merger.Equal:
-        return GL_EQUAL;
-    case Pica::registers.output_merger.NotEqual:
-        return GL_NOTEQUAL;
-    case Pica::registers.output_merger.LessThan:
-        return GL_LESS;
-    case Pica::registers.output_merger.LessThanOrEqual:
-        return GL_LEQUAL;
-    case Pica::registers.output_merger.GreaterThan:
-        return GL_GREATER;
-    case Pica::registers.output_merger.GreaterThanOrEqual:
-        return GL_GEQUAL;
-    default:
+inline GLenum CompareFunc(u32 func) {
+    static const GLenum compare_func_table[] = {
+        GL_NEVER,    // CompareFunc::Never
+        GL_ALWAYS,   // CompareFunc::Always
+        GL_EQUAL,    // CompareFunc::Equal
+        GL_NOTEQUAL, // CompareFunc::NotEqual
+        GL_LESS,     // CompareFunc::LessThan
+        GL_LEQUAL,   // CompareFunc::LessThanOrEqual
+        GL_GREATER,  // CompareFunc::GreaterThan
+        GL_GEQUAL,   // CompareFunc::GreaterThanOrEqual
+    };
+
+    // Range check table for input
+    if (func >= sizeof(compare_func_table) / sizeof(GLenum)) {
         LOG_CRITICAL(Render_OpenGL, "Unknown compare function %d", func);
-        UNIMPLEMENTED();
+        UNREACHABLE();
+
         return GL_ALWAYS;
     }
+
+    return compare_func_table[func];
 }
 
 } // namespace

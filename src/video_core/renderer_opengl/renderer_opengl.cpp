@@ -348,7 +348,6 @@ void RendererOpenGL::UpdateFramerate() {
  */
 void RendererOpenGL::SetWindow(EmuWindow* window) {
     render_window = window;
-    hw_rasterizer->SetWindow(window);
 }
 
 /// Initialize the renderer
