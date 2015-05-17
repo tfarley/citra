@@ -35,6 +35,7 @@ public:
 private:
     /// Structure used for managing texture environment states
     struct TEVConfigUniforms {
+        GLuint enabled;
         GLuint color_sources;
         GLuint alpha_sources;
         GLuint color_modifiers;

@@ -144,6 +144,7 @@ uniform vec4 tev_combiner_buffer_color;
 
 struct TEVConfig
 {
+    bool enabled;
     ivec3 color_sources;
     ivec3 alpha_sources;
     ivec3 color_modifiers;
@@ -286,35 +287,33 @@ float AlphaCombine(int op, float alpha[3]) {
     return 0.0;
 }
 
-void ProcessTexEnv(int tex_env_idx) {
-    g_const_color = tev_cfgs[tex_env_idx].const_color;
-
-    vec3 color_results[3] = vec3[3](GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.x, GetSource(tev_cfgs[tex_env_idx].color_sources.x)),
-                                    GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.y, GetSource(tev_cfgs[tex_env_idx].color_sources.y)),
-                                    GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.z, GetSource(tev_cfgs[tex_env_idx].color_sources.z)));
-    vec3 color_output = ColorCombine(tev_cfgs[tex_env_idx].color_alpha_op.x, color_results);
-
-    float alpha_results[3] = float[3](GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.x, GetSource(tev_cfgs[tex_env_idx].alpha_sources.x)),
-                                      GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.y, GetSource(tev_cfgs[tex_env_idx].alpha_sources.y)),
-                                      GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.z, GetSource(tev_cfgs[tex_env_idx].alpha_sources.z)));
-    float alpha_output = AlphaCombine(tev_cfgs[tex_env_idx].color_alpha_op.y, alpha_results);
-
-    g_last_tex_env_out = vec4(min(color_output * tev_cfgs[tex_env_idx].color_alpha_multiplier.x, 1.0), min(alpha_output * tev_cfgs[tex_env_idx].color_alpha_multiplier.y, 1.0));
-
-    if (tev_cfgs[tex_env_idx].updates_combiner_buffer_color_alpha.x) {
-        g_combiner_buffer.rgb = g_last_tex_env_out.rgb;
-    }
-
-    if (tev_cfgs[tex_env_idx].updates_combiner_buffer_color_alpha.y) {
-        g_combiner_buffer.a = g_last_tex_env_out.a;
-    }
-}
-
 void main(void) {
     g_combiner_buffer = tev_combiner_buffer_color;
 
-    for (int i = 0; i < NUM_TEV_STAGES; ++i) {
-        ProcessTexEnv(i);
+    for (int tex_env_idx = 0; tex_env_idx < NUM_TEV_STAGES; ++tex_env_idx) {
+        if (tev_cfgs[tex_env_idx].enabled) {
+            g_const_color = tev_cfgs[tex_env_idx].const_color;
+
+            vec3 color_results[3] = vec3[3](GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.x, GetSource(tev_cfgs[tex_env_idx].color_sources.x)),
+                                            GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.y, GetSource(tev_cfgs[tex_env_idx].color_sources.y)),
+                                            GetColorModifier(tev_cfgs[tex_env_idx].color_modifiers.z, GetSource(tev_cfgs[tex_env_idx].color_sources.z)));
+            vec3 color_output = ColorCombine(tev_cfgs[tex_env_idx].color_alpha_op.x, color_results);
+
+            float alpha_results[3] = float[3](GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.x, GetSource(tev_cfgs[tex_env_idx].alpha_sources.x)),
+                                              GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.y, GetSource(tev_cfgs[tex_env_idx].alpha_sources.y)),
+                                              GetAlphaModifier(tev_cfgs[tex_env_idx].alpha_modifiers.z, GetSource(tev_cfgs[tex_env_idx].alpha_sources.z)));
+            float alpha_output = AlphaCombine(tev_cfgs[tex_env_idx].color_alpha_op.y, alpha_results);
+
+            g_last_tex_env_out = vec4(min(color_output * tev_cfgs[tex_env_idx].color_alpha_multiplier.x, 1.0), min(alpha_output * tev_cfgs[tex_env_idx].color_alpha_multiplier.y, 1.0));
+        }
+
+        if (tev_cfgs[tex_env_idx].updates_combiner_buffer_color_alpha.x) {
+            g_combiner_buffer.rgb = g_last_tex_env_out.rgb;
+        }
+
+        if (tev_cfgs[tex_env_idx].updates_combiner_buffer_color_alpha.y) {
+            g_combiner_buffer.a = g_last_tex_env_out.a;
+        }
     }
 
     if (alphatest_func == COMPAREFUNC_NEVER) {

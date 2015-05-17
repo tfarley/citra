@@ -43,6 +43,7 @@ void RasterizerOpenGL::InitObjects() {
         auto& uniform_tev = uniform_tev_cfgs[i];
 
         std::string tev_ref_str = "tev_cfgs[" + std::to_string(i) + "]";
+        uniform_tev.enabled = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".enabled").c_str());
         uniform_tev.color_sources = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".color_sources").c_str());
         uniform_tev.alpha_sources = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".alpha_sources").c_str());
         uniform_tev.color_modifiers = glGetUniformLocation(shader.GetHandle(), (tev_ref_str + ".color_modifiers").c_str());
@@ -479,25 +480,38 @@ void RasterizerOpenGL::SyncDrawState() {
         const auto& stage = tev_stages[tev_stage_idx];
         const auto& uniform_tev_cfg = uniform_tev_cfgs[tev_stage_idx];
 
-        GLint color_srcs[3] = { (GLint)stage.color_source1.Value(), (GLint)stage.color_source2.Value(), (GLint)stage.color_source3.Value() };
-        GLint alpha_srcs[3] = { (GLint)stage.alpha_source1.Value(), (GLint)stage.alpha_source2.Value(), (GLint)stage.alpha_source3.Value() };
-        GLint color_mods[3] = { (GLint)stage.color_modifier1.Value(), (GLint)stage.color_modifier2.Value(), (GLint)stage.color_modifier3.Value() };
-        GLint alpha_mods[3] = { (GLint)stage.alpha_modifier1.Value(), (GLint)stage.alpha_modifier2.Value(), (GLint)stage.alpha_modifier3.Value() };
-        GLfloat const_color[4] = { stage.const_r / 255.0f,
-                                   stage.const_g / 255.0f,
-                                   stage.const_b / 255.0f,
-                                   stage.const_a / 255.0f };
+        // No need to process the tev stage if it simply passes the previous stage results through
+        if (stage.color_op == Pica::Regs::TevStageConfig::Operation::Replace &&
+            stage.alpha_op == Pica::Regs::TevStageConfig::Operation::Replace &&
+            stage.color_source1 == Pica::Regs::TevStageConfig::Source::Previous &&
+            stage.alpha_source1 == Pica::Regs::TevStageConfig::Source::Previous &&
+            stage.color_modifier1 == Pica::Regs::TevStageConfig::ColorModifier::SourceColor &&
+            stage.alpha_modifier1 == Pica::Regs::TevStageConfig::AlphaModifier::SourceAlpha &&
+            stage.GetColorMultiplier() == 1 &&
+            stage.GetAlphaMultiplier() == 1) {
+            glUniform1i(uniform_tev_cfg.enabled, 0);
+        } else {
+            GLint color_srcs[3] = { (GLint)stage.color_source1.Value(), (GLint)stage.color_source2.Value(), (GLint)stage.color_source3.Value() };
+            GLint alpha_srcs[3] = { (GLint)stage.alpha_source1.Value(), (GLint)stage.alpha_source2.Value(), (GLint)stage.alpha_source3.Value() };
+            GLint color_mods[3] = { (GLint)stage.color_modifier1.Value(), (GLint)stage.color_modifier2.Value(), (GLint)stage.color_modifier3.Value() };
+            GLint alpha_mods[3] = { (GLint)stage.alpha_modifier1.Value(), (GLint)stage.alpha_modifier2.Value(), (GLint)stage.alpha_modifier3.Value() };
+            GLfloat const_color[4] = { stage.const_r / 255.0f,
+                                       stage.const_g / 255.0f,
+                                       stage.const_b / 255.0f,
+                                       stage.const_a / 255.0f };
 
-        glUniform3iv(uniform_tev_cfg.color_sources, 1, color_srcs);
-        glUniform3iv(uniform_tev_cfg.alpha_sources, 1, alpha_srcs);
-        glUniform3iv(uniform_tev_cfg.color_modifiers, 1, color_mods);
-        glUniform3iv(uniform_tev_cfg.alpha_modifiers, 1, alpha_mods);
-        glUniform2i(uniform_tev_cfg.color_alpha_op, (GLint)stage.color_op.Value(), (GLint)stage.alpha_op.Value());
-        glUniform2i(uniform_tev_cfg.color_alpha_multiplier, stage.GetColorMultiplier(), stage.GetAlphaMultiplier());
-        glUniform4fv(uniform_tev_cfg.const_color, 1, const_color);
-        glUniform2i(uniform_tev_cfg.updates_combiner_buffer_color_alpha,
-                    Pica::registers.tev_combiner_buffer_input.TevStageUpdatesCombinerBufferColor(tev_stage_idx),
-                    Pica::registers.tev_combiner_buffer_input.TevStageUpdatesCombinerBufferAlpha(tev_stage_idx));
+            glUniform1i(uniform_tev_cfg.enabled, 1);
+            glUniform3iv(uniform_tev_cfg.color_sources, 1, color_srcs);
+            glUniform3iv(uniform_tev_cfg.alpha_sources, 1, alpha_srcs);
+            glUniform3iv(uniform_tev_cfg.color_modifiers, 1, color_mods);
+            glUniform3iv(uniform_tev_cfg.alpha_modifiers, 1, alpha_mods);
+            glUniform2i(uniform_tev_cfg.color_alpha_op, (GLint)stage.color_op.Value(), (GLint)stage.alpha_op.Value());
+            glUniform2i(uniform_tev_cfg.color_alpha_multiplier, stage.GetColorMultiplier(), stage.GetAlphaMultiplier());
+            glUniform4fv(uniform_tev_cfg.const_color, 1, const_color);
+            glUniform2i(uniform_tev_cfg.updates_combiner_buffer_color_alpha,
+                        Pica::registers.tev_combiner_buffer_input.TevStageUpdatesCombinerBufferColor(tev_stage_idx),
+                        Pica::registers.tev_combiner_buffer_input.TevStageUpdatesCombinerBufferAlpha(tev_stage_idx));
+        }
     }
 
     // Sync alpha testing to hw shader

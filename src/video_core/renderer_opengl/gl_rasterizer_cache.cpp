@@ -60,7 +60,9 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, int texture_u
 
 void RasterizerCacheOpenGL::NotifyFlush(PAddr addr, u32 size) {
     // Flush any texture that falls in the flushed region
-    for (auto it = texture_cache.begin(); it != texture_cache.upper_bound(addr + size);) {
+    // TODO: Optimize by also inserting upper bound (addr + size) of each texture into the same map and also narrow using lower_bound
+    auto cache_upper_bound = texture_cache.upper_bound(addr + size);
+    for (auto it = texture_cache.begin(); it != cache_upper_bound;) {
         PAddr max_low_addr_bound = std::max(addr, it->first);
         PAddr min_hi_addr_bound = std::min(addr + size, it->first + it->second->size);
 
