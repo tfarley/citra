@@ -53,25 +53,10 @@ in vec2 vert_texcoords[3];
 
 out vec4 o[NUM_VTX_ATTR];
 
-uniform int out_maps[NUM_VTX_ATTR * 4];
-
-void SetVal(int map_idx, float val) {
-    o[out_maps[map_idx] / 4][out_maps[map_idx] % 4] = val;
-}
-
 void main() {
-    SetVal(8, vert_color.x);
-    SetVal(9, vert_color.y);
-    SetVal(10, vert_color.z);
-    SetVal(11, vert_color.w);
-    SetVal(12, vert_texcoords[0].x);
-    SetVal(13, vert_texcoords[0].y);
-
-    // TODO: These seem like the wrong map indices
-    SetVal(14, vert_texcoords[1].x);
-    SetVal(15, vert_texcoords[1].y);
-    SetVal(16, vert_texcoords[2].x);
-    SetVal(17, vert_texcoords[2].y);
+    o[2] = vert_color;
+    o[3] = vec4(vert_texcoords[0].xy, vert_texcoords[1].xy);
+    o[5] = vec4(0.0, 0.0, vert_texcoords[2].xy);
 
     gl_Position = vec4(vert_position.x, -vert_position.y, -vert_position.z, vert_position.w);
 }
@@ -81,8 +66,8 @@ void main() {
 const char g_fragment_shader_hw[] = R"(
 #version 150 core
 
-#define NUM_TEV_STAGES 6
 #define NUM_VTX_ATTR 7
+#define NUM_TEV_STAGES 6
 
 #define SOURCE_PRIMARYCOLOR         0x0
 #define SOURCE_PRIMARYFRAGMENTCOLOR 0x1
@@ -135,6 +120,7 @@ const char g_fragment_shader_hw[] = R"(
 in vec4 o[NUM_VTX_ATTR];
 out vec4 color;
 
+uniform bool alphatest_enabled;
 uniform int alphatest_func;
 uniform float alphatest_ref;
 
@@ -157,31 +143,23 @@ struct TEVConfig
 
 uniform TEVConfig tev_cfgs[NUM_TEV_STAGES];
 
-uniform int out_maps[NUM_VTX_ATTR * 4];
-
 vec4 g_combiner_buffer;
 vec4 g_last_tex_env_out;
 vec4 g_const_color;
 
-float GetVal(int map_idx) {
-    return o[out_maps[map_idx] / 4][out_maps[map_idx] % 4];
-}
-
 vec4 GetSource(int source) {
     if (source == SOURCE_PRIMARYCOLOR) {
-        // HACK: Should use values 8/9/10/11 but hurts framerate
-        // Hack assumes 9/10/11 follow directly after 8's map
-        return o[out_maps[8] >> 2];
+        return o[2];
     } else if (source == SOURCE_PRIMARYFRAGMENTCOLOR) {
         // HACK: Uses color value, but should really use fragment lighting output
-        return o[out_maps[8] >> 2];
+        return o[2];
     } else if (source == SOURCE_TEXTURE0) {
-        return texture(tex[0], vec2(GetVal(12), GetVal(13)));
+        return texture(tex[0], o[3].xy);
     } else if (source == SOURCE_TEXTURE1) {
-        return texture(tex[1], vec2(GetVal(14), GetVal(15)));
+        return texture(tex[1], o[3].zw);
     } else if (source == SOURCE_TEXTURE2) {
         // TODO: Unverified
-        return texture(tex[2], vec2(GetVal(16), GetVal(17)));
+        return texture(tex[2], o[5].zw);
     } else if (source == SOURCE_TEXTURE3) {
         // TODO: no 4th texture?
     } else if (source == SOURCE_PREVIOUSBUFFER) {
@@ -316,33 +294,35 @@ void main(void) {
         }
     }
 
-    if (alphatest_func == COMPAREFUNC_NEVER) {
-        discard;
-    } else if (alphatest_func == COMPAREFUNC_ALWAYS) {
+    if (alphatest_enabled) {
+        if (alphatest_func == COMPAREFUNC_NEVER) {
+            discard;
+        } else if (alphatest_func == COMPAREFUNC_ALWAYS) {
 
-    } else if (alphatest_func == COMPAREFUNC_EQUAL) {
-        if (g_last_tex_env_out.a != alphatest_ref) {
-            discard;
-        }
-    } else if (alphatest_func == COMPAREFUNC_NOTEQUAL) {
-        if (g_last_tex_env_out.a == alphatest_ref) {
-            discard;
-        }
-    } else if (alphatest_func == COMPAREFUNC_LESSTHAN) {
-        if (g_last_tex_env_out.a >= alphatest_ref) {
-            discard;
-        }
-    } else if (alphatest_func == COMPAREFUNC_LESSTHANOREQUAL) {
-        if (g_last_tex_env_out.a > alphatest_ref) {
-            discard;
-        }
-    } else if (alphatest_func == COMPAREFUNC_GREATERTHAN) {
-        if (g_last_tex_env_out.a <= alphatest_ref) {
-            discard;
-        }
-    } else if (alphatest_func == COMPAREFUNC_GREATERTHANOREQUAL) {
-        if (g_last_tex_env_out.a < alphatest_ref) {
-            discard;
+        } else if (alphatest_func == COMPAREFUNC_EQUAL) {
+            if (g_last_tex_env_out.a != alphatest_ref) {
+                discard;
+            }
+        } else if (alphatest_func == COMPAREFUNC_NOTEQUAL) {
+            if (g_last_tex_env_out.a == alphatest_ref) {
+                discard;
+            }
+        } else if (alphatest_func == COMPAREFUNC_LESSTHAN) {
+            if (g_last_tex_env_out.a >= alphatest_ref) {
+                discard;
+            }
+        } else if (alphatest_func == COMPAREFUNC_LESSTHANOREQUAL) {
+            if (g_last_tex_env_out.a > alphatest_ref) {
+                discard;
+            }
+        } else if (alphatest_func == COMPAREFUNC_GREATERTHAN) {
+            if (g_last_tex_env_out.a <= alphatest_ref) {
+                discard;
+            }
+        } else if (alphatest_func == COMPAREFUNC_GREATERTHANOREQUAL) {
+            if (g_last_tex_env_out.a < alphatest_ref) {
+                discard;
+            }
         }
     }
 

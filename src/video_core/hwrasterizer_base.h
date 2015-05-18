@@ -23,9 +23,12 @@ public:
     /// Draw the current batch of triangles
     virtual void DrawTriangles() = 0;
 
+    /// Notify rasterizer that the specified PICA register has been changed
+    virtual void NotifyPicaRegisterChanged(u32 id) = 0;
+
     /// Notify rasterizer that the specified 3DS memory region will be read from after this notification
-    virtual void NotifyPreRead(u32 paddr, u32 size) = 0;
+    virtual void NotifyPreRead(PAddr addr, u32 size) = 0;
 
     /// Notify rasterizer that a 3DS memory region has been changed
-    virtual void NotifyFlush(u32 addr, u32 size) = 0;
+    virtual void NotifyFlush(PAddr addr, u32 size) = 0;
 };

@@ -358,6 +358,8 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
             break;
     }
 
+    VideoCore::g_renderer->hw_rasterizer->NotifyPicaRegisterChanged(id);
+
     if (g_debug_context)
         g_debug_context->OnEvent(DebugContext::Event::CommandProcessed, reinterpret_cast<void*>(&id));
 }

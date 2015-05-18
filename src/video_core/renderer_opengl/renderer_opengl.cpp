@@ -67,6 +67,7 @@ RendererOpenGL::~RendererOpenGL() {
 void RendererOpenGL::SwapBuffers() {
     render_window->MakeCurrent();
 
+    OpenGLState prev_state = OpenGLState::GetCurState();
     state.Apply();
 
     for(int i : {0, 1}) {
@@ -113,6 +114,8 @@ void RendererOpenGL::SwapBuffers() {
     // Swap buffers
     render_window->PollEvents();
     render_window->SwapBuffers();
+
+    prev_state.Apply();
 
     profiler.BeginFrame();
 }

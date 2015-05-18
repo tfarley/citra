@@ -26,6 +26,9 @@ public:
     /// Draw the current batch of triangles
     void DrawTriangles() override;
 
+    /// Notify rasterizer that the specified PICA register has been changed
+    void NotifyPicaRegisterChanged(u32 id) override;
+
     /// Notify rasterizer that the specified 3DS memory region will be read from after this notification
     void NotifyPreRead(PAddr addr, u32 size) override;
 
@@ -101,7 +104,22 @@ private:
     /// Syncs the state and contents of the OpenGL framebuffer to match the current PICA framebuffer
     void SyncFramebuffer();
 
-    /// Syncs the OpenGL drawing state to match the current PICA state
+    /// Syncs the specified TEV stage's color and alpha sources to match the PICA register
+    void SyncTevSources(int stage_index, const Pica::Regs::TevStageConfig& config);
+
+    /// Syncs the specified TEV stage's color and alpha modifiers to match the PICA register
+    void SyncTevModifiers(int stage_index, const Pica::Regs::TevStageConfig& config);
+
+    /// Syncs the specified TEV stage's color and alpha combiner operations to match the PICA register
+    void SyncTevOps(int stage_index, const Pica::Regs::TevStageConfig& config);
+
+    /// Syncs the specified TEV stage's constant color to match the PICA register
+    void SyncTevColor(int stage_index, const Pica::Regs::TevStageConfig& config);
+
+    /// Syncs the specified TEV stage's color and alpha multipliers to match the PICA register
+    void SyncTevMultipliers(int stage_index, const Pica::Regs::TevStageConfig& config);
+
+    /// Syncs the remaining OpenGL drawing state to match the current PICA state
     void SyncDrawState();
 
     /// Copies the 3ds color framebuffer into the OpenGL color framebuffer texture
@@ -147,11 +165,10 @@ private:
     GLuint attrib_texcoords;
 
     // Hardware fragment shader
+    GLuint uniform_alphatest_enabled;
     GLuint uniform_alphatest_func;
     GLuint uniform_alphatest_ref;
     GLuint uniform_tex;
     GLuint uniform_tev_combiner_buffer_color;
     TEVConfigUniforms uniform_tev_cfgs[6];
-    GLuint uniform_out_maps;
-    GLuint uniform_tex_envs;
 };
