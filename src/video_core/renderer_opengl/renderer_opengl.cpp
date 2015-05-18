@@ -65,8 +65,7 @@ RendererOpenGL::~RendererOpenGL() {
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
-    render_window->MakeCurrent();
-
+    // Maintain the rasterizer's state as a priority
     OpenGLState prev_state = OpenGLState::GetCurState();
     state.Apply();
 

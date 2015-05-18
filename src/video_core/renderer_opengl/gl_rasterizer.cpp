@@ -75,10 +75,6 @@ void RasterizerOpenGL::InitObjects() {
     state.draw.vertex_buffer = vertex_buffer.GetHandle();
     state.draw.shader_program = shader.GetHandle();
 
-    for (auto& texture_unit : state.texture_units) {
-        texture_unit.enabled_2d = true;
-    }
-
     state.Apply();
 
     // Set the texture samplers to correspond to different texture units
