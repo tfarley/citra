@@ -8,6 +8,8 @@
 
 #include "core/memory.h"
 
+#include "video_core/renderer_opengl/gl_shaders.h"
+#include "video_core/renderer_opengl/gl_shader_constructor.h"
 #include "video_core/renderer_opengl/gl_rasterizer_cache.h"
 #include "video_core/renderer_opengl/pica_to_gl.h"
 #include "video_core/debug_utils/debug_utils.h"
@@ -16,7 +18,25 @@ RasterizerCacheOpenGL::~RasterizerCacheOpenGL() {
     FullFlush();
 }
 
-void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState &state, unsigned texture_unit, const Pica::Regs::FullTextureConfig& config) {
+void RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offset, const u32* shader_data, const u32* swizzle_data) {
+    auto cached_shader = vertex_shader_cache.find(main_offset);
+
+    if (cached_shader != vertex_shader_cache.end()) {
+        state.draw.shader_program = cached_shader->second->handle;
+    } else {
+        std::unique_ptr<OGLShader> new_shader = Common::make_unique<OGLShader>();
+
+        new_shader->Create(PICAVertexShaderToGLSL(main_offset, shader_data, swizzle_data).c_str(), GLShaders::g_fragment_shader_hw);
+        LOG_CRITICAL(Render_OpenGL, "%s", PICAVertexShaderToGLSL(main_offset, shader_data, swizzle_data).c_str());
+        state.draw.shader_program = new_shader->handle;
+
+        vertex_shader_cache.emplace(main_offset, std::move(new_shader));
+    }
+
+    state.Apply();
+}
+
+void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState& state, unsigned texture_unit, const Pica::Regs::FullTextureConfig& config) {
     PAddr texture_addr = config.config.GetPhysicalAddress();
 
     const auto cached_texture = texture_cache.find(texture_addr);
@@ -73,5 +93,6 @@ void RasterizerCacheOpenGL::NotifyFlush(PAddr addr, u32 size) {
 }
 
 void RasterizerCacheOpenGL::FullFlush() {
+    vertex_shader_cache.clear();
     texture_cache.clear();
 }

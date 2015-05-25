@@ -26,6 +26,10 @@ public:
                      const Pica::VertexShader::OutputVertex& v1,
                      const Pica::VertexShader::OutputVertex& v2) override;
 
+    void AddTriangleRaw(const RawVertex& v0,
+                        const RawVertex& v1,
+                        const RawVertex& v2) override;
+
     /// Draw the current batch of triangles
     void DrawTriangles() override;
 
@@ -101,6 +105,8 @@ private:
         GLfloat tex_coord2[2];
     };
 
+    void LocateUniforms(GLuint shader_handle);
+
     /// Reconfigure the OpenGL color texture to use the given format and dimensions
     void ReconfigureColorTexture(TextureInfo& texture, Pica::Regs::ColorFormat format, u32 width, u32 height);
 
@@ -109,6 +115,8 @@ private:
 
     /// Syncs the state and contents of the OpenGL framebuffer to match the current PICA framebuffer
     void SyncFramebuffer();
+
+    void SyncShader();
 
     /// Syncs the cull mode to match the PICA register
     void SyncCullMode();
@@ -181,6 +189,7 @@ private:
     RasterizerCacheOpenGL res_cache;
 
     std::vector<HardwareVertex> vertex_batch;
+    std::vector<RawVertex> raw_vertex_batch;
 
     OpenGLState state;
 
@@ -200,6 +209,8 @@ private:
     GLuint attrib_color;
     GLuint attrib_texcoords;
 
+    GLuint attrib_v;
+
     // Hardware fragment shader
     GLuint uniform_alphatest_enabled;
     GLuint uniform_alphatest_func;
@@ -207,4 +218,11 @@ private:
     GLuint uniform_tex;
     GLuint uniform_tev_combiner_buffer_color;
     TEVConfigUniforms uniform_tev_cfgs[6];
+
+    GLuint uniform_num_attrs;
+    GLuint uniform_attr_map;
+    GLuint uniform_out_map;
+    GLuint uniform_c;
+    GLuint uniform_b;
+    GLuint uniform_i;
 };

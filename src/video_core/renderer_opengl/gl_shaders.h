@@ -150,17 +150,17 @@ vec4 g_const_color;
 
 vec4 GetSource(int source) {
     if (source == SOURCE_PRIMARYCOLOR) {
-        return o[2];
+        return o[1];
     } else if (source == SOURCE_PRIMARYFRAGMENTCOLOR) {
         // HACK: Until we implement fragment lighting, use primary_color
-        return o[2];
+        return o[1];
     } else if (source == SOURCE_SECONDARYFRAGMENTCOLOR) {
         // HACK: Until we implement fragment lighting, use zero
         return vec4(0.0, 0.0, 0.0, 0.0);
     } else if (source == SOURCE_TEXTURE0) {
-        return texture(tex[0], o[3].xy);
+        return texture(tex[0], o[2].xy);
     } else if (source == SOURCE_TEXTURE1) {
-        return texture(tex[1], o[3].zw);
+        return texture(tex[1], o[2].zw);
     } else if (source == SOURCE_TEXTURE2) {
         // TODO: Unverified
         return texture(tex[2], o[5].zw);
@@ -270,6 +270,16 @@ float AlphaCombine(int op, float alpha[3]) {
 }
 
 void main(void) {
+
+
+
+//color = vec4(1.0, 0.0, 0.0, 1.0);
+//return;
+
+
+
+
+
     g_combiner_buffer = tev_combiner_buffer_color;
 
     for (int tex_env_idx = 0; tex_env_idx < NUM_TEV_STAGES; ++tex_env_idx) {

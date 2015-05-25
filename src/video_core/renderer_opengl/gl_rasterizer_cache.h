@@ -15,8 +15,10 @@ class RasterizerCacheOpenGL : NonCopyable {
 public:
     ~RasterizerCacheOpenGL();
 
+    void LoadAndBindShader(OpenGLState& state, u32 main_offset, const u32* shader_data, const u32* swizzle_data);
+
     /// Loads a texture from 3DS memory to OpenGL and caches it (if not already cached)
-    void LoadAndBindTexture(OpenGLState &state, unsigned texture_unit, const Pica::Regs::FullTextureConfig& config);
+    void LoadAndBindTexture(OpenGLState& state, unsigned texture_unit, const Pica::Regs::FullTextureConfig& config);
 
     /// Flush any cached resource that touches the flushed region
     void NotifyFlush(PAddr addr, u32 size);
@@ -32,5 +34,6 @@ private:
         u32 size;
     };
 
+    std::map<PAddr, std::unique_ptr<OGLShader>> vertex_shader_cache;
     std::map<PAddr, std::unique_ptr<CachedTexture>> texture_cache;
 };

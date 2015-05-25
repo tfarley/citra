@@ -7,6 +7,12 @@
 #include "common/emu_window.h"
 #include "video_core/vertex_shader.h"
 
+struct RawVertex {
+    RawVertex() = default;
+
+    float attr[16][4];
+};
+
 class HWRasterizer {
 public:
     virtual ~HWRasterizer() {
@@ -22,6 +28,10 @@ public:
     virtual void AddTriangle(const Pica::VertexShader::OutputVertex& v0,
                              const Pica::VertexShader::OutputVertex& v1,
                              const Pica::VertexShader::OutputVertex& v2) = 0;
+
+    virtual void AddTriangleRaw(const RawVertex& v0,
+                                const RawVertex& v1,
+                                const RawVertex& v2) = 0;
 
     /// Draw the current batch of triangles
     virtual void DrawTriangles() = 0;

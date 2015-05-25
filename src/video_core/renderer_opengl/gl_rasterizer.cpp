@@ -35,33 +35,7 @@ RasterizerOpenGL::~RasterizerOpenGL() { }
 void RasterizerOpenGL::InitObjects() {
     // Create the hardware shader program and get attrib/uniform locations
     shader.Create(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
-    attrib_position = glGetAttribLocation(shader.handle, "vert_position");
-    attrib_color = glGetAttribLocation(shader.handle, "vert_color");
-    attrib_texcoords = glGetAttribLocation(shader.handle, "vert_texcoords");
-
-    uniform_alphatest_enabled = glGetUniformLocation(shader.handle, "alphatest_enabled");
-    uniform_alphatest_func = glGetUniformLocation(shader.handle, "alphatest_func");
-    uniform_alphatest_ref = glGetUniformLocation(shader.handle, "alphatest_ref");
-
-    uniform_tex = glGetUniformLocation(shader.handle, "tex");
-
-    uniform_tev_combiner_buffer_color = glGetUniformLocation(shader.handle, "tev_combiner_buffer_color");
-
-    const auto tev_stages = Pica::g_state.regs.GetTevStages();
-    for (unsigned tev_stage_index = 0; tev_stage_index < tev_stages.size(); ++tev_stage_index) {
-        auto& uniform_tev_cfg = uniform_tev_cfgs[tev_stage_index];
-
-        std::string tev_ref_str = "tev_cfgs[" + std::to_string(tev_stage_index) + "]";
-        uniform_tev_cfg.enabled = glGetUniformLocation(shader.handle, (tev_ref_str + ".enabled").c_str());
-        uniform_tev_cfg.color_sources = glGetUniformLocation(shader.handle, (tev_ref_str + ".color_sources").c_str());
-        uniform_tev_cfg.alpha_sources = glGetUniformLocation(shader.handle, (tev_ref_str + ".alpha_sources").c_str());
-        uniform_tev_cfg.color_modifiers = glGetUniformLocation(shader.handle, (tev_ref_str + ".color_modifiers").c_str());
-        uniform_tev_cfg.alpha_modifiers = glGetUniformLocation(shader.handle, (tev_ref_str + ".alpha_modifiers").c_str());
-        uniform_tev_cfg.color_alpha_op = glGetUniformLocation(shader.handle, (tev_ref_str + ".color_alpha_op").c_str());
-        uniform_tev_cfg.color_alpha_multiplier = glGetUniformLocation(shader.handle, (tev_ref_str + ".color_alpha_multiplier").c_str());
-        uniform_tev_cfg.const_color = glGetUniformLocation(shader.handle, (tev_ref_str + ".const_color").c_str());
-        uniform_tev_cfg.updates_combiner_buffer_color_alpha = glGetUniformLocation(shader.handle, (tev_ref_str + ".updates_combiner_buffer_color_alpha").c_str());
-    }
+    LocateUniforms(shader.handle);
 
     // Generate VBO and VAO
     vertex_buffer.Create();
@@ -143,6 +117,7 @@ void RasterizerOpenGL::InitObjects() {
 void RasterizerOpenGL::Reset() {
     const auto& regs = Pica::g_state.regs;
 
+    SyncShader();
     SyncCullMode();
     SyncBlendEnabled();
     SyncBlendFuncs();
@@ -208,14 +183,31 @@ void RasterizerOpenGL::AddTriangle(const Pica::VertexShader::OutputVertex& v0,
     vertex_batch.push_back(HardwareVertex(v2));
 }
 
+void RasterizerOpenGL::AddTriangleRaw(const RawVertex& v0,
+                                      const RawVertex& v1,
+                                      const RawVertex& v2) {
+    raw_vertex_batch.push_back(v0);
+    raw_vertex_batch.push_back(v1);
+    raw_vertex_batch.push_back(v2);
+}
+
 void RasterizerOpenGL::DrawTriangles() {
     SyncFramebuffer();
     SyncDrawState();
 
-    glBufferData(GL_ARRAY_BUFFER, vertex_batch.size() * sizeof(HardwareVertex), vertex_batch.data(), GL_STREAM_DRAW);
+    /*glBufferData(GL_ARRAY_BUFFER, vertex_batch.size() * sizeof(HardwareVertex), vertex_batch.data(), GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertex_batch.size());
 
-    vertex_batch.clear();
+    vertex_batch.clear();*/
+
+    //for (int i = 0; i < raw_vertex_batch.size(); ++i) {
+    //    LOG_CRITICAL(Render_OpenGL, "vert %f %f %f %f", raw_vertex_batch[i].attr[0][0], raw_vertex_batch[i].attr[0][1], raw_vertex_batch[i].attr[0][2], raw_vertex_batch[i].attr[0][3]);
+    //}
+
+    glBufferData(GL_ARRAY_BUFFER, raw_vertex_batch.size() * sizeof(RawVertex), raw_vertex_batch.data(), GL_STREAM_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)raw_vertex_batch.size());
+
+    raw_vertex_batch.clear();
 
     // Flush the resource cache at the current depth and color framebuffer addresses for render-to-texture
     const auto& regs = Pica::g_state.regs;
@@ -244,6 +236,117 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
         return;
 
     switch(id) {
+    // Vertex shader
+    case PICA_REG_INDEX(vs_main_offset):
+        //LOG_CRITICAL(Render_OpenGL, "shader");
+        SyncShader();
+        break;
+
+    case PICA_REG_INDEX(vs_bool_uniforms):
+        //LOG_CRITICAL(Render_OpenGL, "bbbbb");
+        glUniform1iv(uniform_b, 16, (const GLint*)Pica::g_state.vs.uniforms.b.data());
+        break;
+
+    case PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[0], 0x2b1):
+    case PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[1], 0x2b2):
+    case PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[2], 0x2b3):
+    case PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[3], 0x2b4):
+    {
+        //LOG_CRITICAL(Render_OpenGL, "iiiii");
+        int index = (id - PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[0], 0x2b1));
+        glUniform4iv(uniform_i + index, 1, (const GLint*)&Pica::g_state.vs.uniforms.i[index]);
+        break;
+    }
+
+    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[0], 0x2c1):
+    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[1], 0x2c2):
+    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[2], 0x2c3):
+    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[3], 0x2c4):
+    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[4], 0x2c5):
+    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[5], 0x2c6):
+    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[6], 0x2c7):
+    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[7], 0x2c8):
+    {
+        
+        const auto& uniform_setup = regs.vs_uniform_setup;
+        const auto& float24_values = Pica::g_state.vs.uniforms.f[uniform_setup.index];
+        GLfloat gl_float_values[] = { float24_values.x.ToFloat32(),
+                                      float24_values.y.ToFloat32(),
+                                      float24_values.z.ToFloat32(),
+                                      float24_values.w.ToFloat32() };
+        LOG_CRITICAL(Render_OpenGL, "f %d %f %f %f %f", uniform_setup.index.Value(), gl_float_values[0], gl_float_values[1], gl_float_values[2], gl_float_values[3]);
+        glUniform4fv(uniform_c + uniform_setup.index, 1, gl_float_values);
+        break;
+    }
+
+    case PICA_REG_INDEX(vs_input_register_map.attribute0_register):
+    {
+        //LOG_CRITICAL(Render_OpenGL, "asdf");
+        GLint maps[] = { regs.vs_input_register_map.attribute0_register,
+                         regs.vs_input_register_map.attribute1_register,
+                         regs.vs_input_register_map.attribute2_register,
+                         regs.vs_input_register_map.attribute3_register,
+                         regs.vs_input_register_map.attribute4_register,
+                         regs.vs_input_register_map.attribute5_register,
+                         regs.vs_input_register_map.attribute6_register,
+                         regs.vs_input_register_map.attribute7_register
+        };
+        //LOG_CRITICAL(Render_OpenGL, "inregs1 %d %d %d %d %d %d %d %d", maps[0], maps[1], maps[2], maps[3], maps[4], maps[5], maps[6], maps[7]);
+        // TODO: only need to actually upload up to num_attributes maps (clamp to it)
+        glUniform1iv(uniform_attr_map, 8, maps);
+        break;
+    }
+
+    // TODO: offset (+4) maybe wrong?
+    case PICA_REG_INDEX(vs_input_register_map.attribute0_register)+1:
+    {
+        //LOG_CRITICAL(Render_OpenGL, "1234");
+        //LOG_CRITICAL(Render_OpenGL, "%d", PICA_REG_INDEX(vs_output_attributes));
+        
+        GLint maps[] = { regs.vs_input_register_map.attribute8_register,
+                         regs.vs_input_register_map.attribute9_register,
+                         regs.vs_input_register_map.attribute10_register,
+                         regs.vs_input_register_map.attribute11_register,
+                         regs.vs_input_register_map.attribute12_register,
+                         regs.vs_input_register_map.attribute13_register,
+                         regs.vs_input_register_map.attribute14_register,
+                         regs.vs_input_register_map.attribute15_register
+        };
+        //LOG_CRITICAL(Render_OpenGL, "inregs2 %d %d %d %d %d %d %d %d", maps[0], maps[1], maps[2], maps[3], maps[4], maps[5], maps[6], maps[7]);
+        // TODO: only need to actually upload up to num_attributes maps (clamp to it MINUS 8)
+        glUniform1iv(uniform_attr_map + 8, 8, maps);
+        break;
+    }
+
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[0], 0x50):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[1], 0x51):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[2], 0x52):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[3], 0x53):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[4], 0x54):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[5], 0x55):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[6], 0x56):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[7], 0x57):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[8], 0x58):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[9], 0x59):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[10], 0x5A):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[11], 0x5B):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[12], 0x5C):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[13], 0x5E):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[14], 0x5F):
+    case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[15], 0x60):
+    {
+        int index = (id - PICA_REG_INDEX_WORKAROUND(vs_output_attributes[0], 0x50));
+        //LOG_CRITICAL(Render_OpenGL, "out0");
+        GLint maps[] = { regs.vs_output_attributes[index].map_x,
+                         regs.vs_output_attributes[index].map_y,
+                         regs.vs_output_attributes[index].map_z,
+                         regs.vs_output_attributes[index].map_w
+        };
+        //LOG_CRITICAL(Render_OpenGL, "outmap %d - %d %d %d %d", index, maps[0], maps[1], maps[2], maps[3]);
+        glUniform4iv(uniform_out_map + index, 1, maps);
+        break;
+    }
+
     // Culling
     case PICA_REG_INDEX(cull_mode):
         SyncCullMode();
@@ -441,6 +544,43 @@ void RasterizerOpenGL::NotifyFlush(PAddr addr, u32 size) {
     res_cache.NotifyFlush(addr, size);
 }
 
+void RasterizerOpenGL::LocateUniforms(GLuint shader_handle) {
+    attrib_position = glGetAttribLocation(shader_handle, "vert_position");
+    attrib_color = glGetAttribLocation(shader_handle, "vert_color");
+    attrib_texcoords = glGetAttribLocation(shader_handle, "vert_texcoords");
+
+    uniform_alphatest_enabled = glGetUniformLocation(shader_handle, "alphatest_enabled");
+    uniform_alphatest_func = glGetUniformLocation(shader_handle, "alphatest_func");
+    uniform_alphatest_ref = glGetUniformLocation(shader_handle, "alphatest_ref");
+
+    uniform_tex = glGetUniformLocation(shader_handle, "tex");
+
+    uniform_tev_combiner_buffer_color = glGetUniformLocation(shader_handle, "tev_combiner_buffer_color");
+
+    const auto tev_stages = Pica::g_state.regs.GetTevStages();
+    for (unsigned tev_stage_index = 0; tev_stage_index < tev_stages.size(); ++tev_stage_index) {
+        auto& uniform_tev_cfg = uniform_tev_cfgs[tev_stage_index];
+
+        std::string tev_ref_str = "tev_cfgs[" + std::to_string(tev_stage_index) + "]";
+        uniform_tev_cfg.enabled = glGetUniformLocation(shader_handle, (tev_ref_str + ".enabled").c_str());
+        uniform_tev_cfg.color_sources = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_sources").c_str());
+        uniform_tev_cfg.alpha_sources = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_sources").c_str());
+        uniform_tev_cfg.color_modifiers = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_modifiers").c_str());
+        uniform_tev_cfg.alpha_modifiers = glGetUniformLocation(shader_handle, (tev_ref_str + ".alpha_modifiers").c_str());
+        uniform_tev_cfg.color_alpha_op = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_alpha_op").c_str());
+        uniform_tev_cfg.color_alpha_multiplier = glGetUniformLocation(shader_handle, (tev_ref_str + ".color_alpha_multiplier").c_str());
+        uniform_tev_cfg.const_color = glGetUniformLocation(shader_handle, (tev_ref_str + ".const_color").c_str());
+        uniform_tev_cfg.updates_combiner_buffer_color_alpha = glGetUniformLocation(shader.handle, (tev_ref_str + ".updates_combiner_buffer_color_alpha").c_str());
+    }
+
+    uniform_num_attrs = glGetUniformLocation(shader_handle, "num_attrs");
+    uniform_attr_map = glGetUniformLocation(shader_handle, "attr_map");
+    uniform_out_map = glGetUniformLocation(shader_handle, "out_map");
+    uniform_c = glGetUniformLocation(shader_handle, "c");
+    uniform_b = glGetUniformLocation(shader_handle, "b");
+    uniform_i = glGetUniformLocation(shader_handle, "i");
+}
+
 void RasterizerOpenGL::ReconfigureColorTexture(TextureInfo& texture, Pica::Regs::ColorFormat format, u32 width, u32 height) {
     GLint internal_format;
 
@@ -618,10 +758,24 @@ void RasterizerOpenGL::SyncFramebuffer() {
     }
 }
 
+void RasterizerOpenGL::SyncShader() {
+    const auto& regs = Pica::g_state.regs;
+    res_cache.LoadAndBindShader(state, regs.vs_main_offset, Pica::g_state.vs.program_code.data(), Pica::g_state.vs.swizzle_data.data());
+
+    attrib_v = glGetAttribLocation(state.draw.shader_program, "v");
+
+    for (int i = 0; i < 16; i++) {
+        glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, sizeof(RawVertex), (GLvoid*)(i * 4 * sizeof(float)));
+        glEnableVertexAttribArray(attrib_v + i);
+    }
+
+    LocateUniforms(state.draw.shader_program);
+}
+
 void RasterizerOpenGL::SyncCullMode() {
     const auto& regs = Pica::g_state.regs;
 
-    switch (regs.cull_mode) {
+    /*switch (regs.cull_mode) {
     case Pica::Regs::CullMode::KeepAll:
         state.cull.enabled = false;
         break;
@@ -640,7 +794,8 @@ void RasterizerOpenGL::SyncCullMode() {
         LOG_CRITICAL(Render_OpenGL, "Unknown cull mode %d", regs.cull_mode.Value());
         UNIMPLEMENTED();
         break;
-    }
+    }*/
+    state.cull.enabled = false;
 }
 
 void RasterizerOpenGL::SyncBlendEnabled() {
@@ -774,6 +929,9 @@ void RasterizerOpenGL::SyncDrawState() {
     for (unsigned tev_stage_index = 0; tev_stage_index < tev_stages.size(); ++tev_stage_index) {
         glUniform1i(uniform_tev_cfgs[tev_stage_index].enabled, !IsPassThroughTevStage(tev_stages[tev_stage_index]));
     }
+
+    glUniform1i(uniform_num_attrs, Pica::g_state.regs.vertex_attributes.GetNumTotalAttributes());
+    LOG_CRITICAL(Render_OpenGL, "%d", Pica::g_state.regs.vertex_attributes.GetNumTotalAttributes());
 
     state.Apply();
 }
