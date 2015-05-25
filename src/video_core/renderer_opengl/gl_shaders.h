@@ -150,20 +150,20 @@ vec4 g_const_color;
 
 vec4 GetSource(int source) {
     if (source == SOURCE_PRIMARYCOLOR) {
-        return o[1];
+        return o[2];
     } else if (source == SOURCE_PRIMARYFRAGMENTCOLOR) {
         // HACK: Until we implement fragment lighting, use primary_color
-        return o[1];
+        return o[2];
     } else if (source == SOURCE_SECONDARYFRAGMENTCOLOR) {
         // HACK: Until we implement fragment lighting, use zero
         return vec4(0.0, 0.0, 0.0, 0.0);
     } else if (source == SOURCE_TEXTURE0) {
-        return texture(tex[0], o[2].xy);
+        return texture(tex[0], o[3].xy);
     } else if (source == SOURCE_TEXTURE1) {
-        return texture(tex[1], o[2].zw);
+        return texture(tex[1], o[3].zw);
     } else if (source == SOURCE_TEXTURE2) {
         // TODO: Unverified
-        return texture(tex[2], o[5].zw);
+        return texture(tex[2], o[4].xy);
     } else if (source == SOURCE_TEXTURE3) {
         // TODO: no 4th texture?
     } else if (source == SOURCE_PREVIOUSBUFFER) {
@@ -272,9 +272,9 @@ float AlphaCombine(int op, float alpha[3]) {
 void main(void) {
 
 
-
+color = texture(tex[0], o[3].xy);
 //color = vec4(1.0, 0.0, 0.0, 1.0);
-//return;
+return;
 
 
 

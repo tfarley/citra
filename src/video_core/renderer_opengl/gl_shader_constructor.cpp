@@ -172,8 +172,8 @@ std::string ParseComponentMask(u32 v, u32 comp_num) {
     return out;
 }
 
-std::string ParseComponentSwizzle(u32 v, u32 srcidx, bool clamp_swizzle) {
-    u32 maxLen = clamp_swizzle ? GetRegMaskLen(v) : 4;
+std::string SwizzleToString(const nihstro::SwizzlePattern& swizzle, u32 srcidx, bool clamp_swizzle) {
+    //u32 maxLen = clamp_swizzle ? GetRegMaskLen(v) : 4;
 
 
     // TODO: use nihstro for all this crud instead of doing it manually from aemstro (probably outdated anyway)
@@ -186,20 +186,37 @@ std::string ParseComponentSwizzle(u32 v, u32 srcidx, bool clamp_swizzle) {
     //return swizzle.DestMaskToString();
 
 
-    bleh, just redo all of this with nihstro stuff
+    //bleh, just redo all of this with nihstro stuff
 
-    v = (v >> (5 + 9 * srcidx)) & 0xFF;
-    const nihstro::SwizzlePattern& swizzle = *(nihstro::SwizzlePattern*)&v;
+    //v = (v >> (5 + 9 * srcidx)) & 0xFF;
+    //const nihstro::SwizzlePattern& swizzle = *(nihstro::SwizzlePattern*)&v;
     std::string out(".");
     
-    /*static const char comp[] = { 'x', 'y', 'z', 'w' };
-    for (u32 i = 0; i < maxLen; ++i) {
+    //swizzle.src1_selector_0
+    static const char comp[] = { 'x', 'y', 'z', 'w' };
+    if (srcidx == 0) {
+        if (clamp_swizzle && swizzle.DestComponentEnabled(0)) out += comp[(unsigned)swizzle.src1_selector_0.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(1)) out += comp[(unsigned)swizzle.src1_selector_1.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(2)) out += comp[(unsigned)swizzle.src1_selector_2.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(3)) out += comp[(unsigned)swizzle.src1_selector_3.Value()];
+    } else if (srcidx == 1) {
+        if (clamp_swizzle && swizzle.DestComponentEnabled(0)) out += comp[(unsigned)swizzle.src2_selector_0.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(1)) out += comp[(unsigned)swizzle.src2_selector_1.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(2)) out += comp[(unsigned)swizzle.src2_selector_2.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(3)) out += comp[(unsigned)swizzle.src2_selector_3.Value()];
+    } else if (srcidx == 2) {
+        if (clamp_swizzle && swizzle.DestComponentEnabled(0)) out += comp[(unsigned)swizzle.src3_selector_0.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(1)) out += comp[(unsigned)swizzle.src3_selector_1.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(2)) out += comp[(unsigned)swizzle.src3_selector_2.Value()];
+        if (clamp_swizzle && swizzle.DestComponentEnabled(3)) out += comp[(unsigned)swizzle.src3_selector_3.Value()];
+    }
+    /*for (u32 i = 0; i < maxLen; ++i) {
         out += comp[(v >> ((3 - i) * 2)) & 0x3];
     }*/
 
-    out += swizzle.DestMaskToString();
+    //out += swizzle.DestMaskToString();
 
-    if (out.compare(".xyzw") == 0) {
+    if (out.compare(".") == 0 || out.compare(".xyzw") == 0) {
         return std::string();
     }
 
@@ -218,8 +235,8 @@ std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted,
 
     const nihstro::SwizzlePattern& swizzle = *(nihstro::SwizzlePattern*)&swizzle_data[swizzle_idx];
     bool is_negated = (srcidx == 0 && swizzle.negate_src1) ||
-                        (srcidx == 1 && swizzle.negate_src2) ||
-                        (srcidx == 2 && swizzle.negate_src3);
+                      (srcidx == 1 && swizzle.negate_src2) ||
+                      (srcidx == 2 && swizzle.negate_src3);
 
     u8 v;
     if (is_mad) {
@@ -293,7 +310,7 @@ std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted,
         reg_text += "]";
     }
 
-    return (is_negated ? "-" : "") + reg_text + ParseComponentSwizzle(swizzle_data[swizzle_idx], srcidx, clamp_swizzle);
+    return (is_negated ? "-" : "") + reg_text + SwizzleToString(swizzle, srcidx, clamp_swizzle);
 }
 
 std::string RegTxtDst(u8 v, u32 mask, u32 comp_num) {
@@ -834,7 +851,6 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
             glsl_shader += std::string(nest_depth, '\t') + "idx = ivec2(0, 0);\n";
             glsl_shader += std::string(nest_depth, '\t') + "cmp = bvec2(false, false);\n";
 
-            // TODO: only do this for num_attributes! not all 16
             glsl_shader += std::string(nest_depth, '\t') + "for (int i = 0; i < num_attrs; ++i) {\n";
             nest_depth++;
             glsl_shader += std::string(nest_depth, '\t') + "int map = attr_map[i];\n";
@@ -852,7 +868,44 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
 
             if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::END) {
                 if (nest_depth > 0) {
-                    glsl_shader += std::string(nest_depth, '\t') + "for (int i = 0; i < 16 * 4; ++i) {\n";
+                    
+                    //glsl_shader += std::string(nest_depth, '\t') + "int map;\n";
+                    //so this all seems to work - issue is that it doesnt like variables in the leftmost array slot or something
+                    //maybe it optimizes it out; or just doesn't support it?
+                    //glsl_shader += std::string(nest_depth, '\t') + "int mapt = 3;int mapu=0; o[mapt ][mapu ] = output_regs[2][0];";
+                    //glsl_shader += std::string(nest_depth, '\t') + "int mapy = 3;int mapi=1; o[mapy ][mapi ] = output_regs[2][1];";
+                    //should be 7*4
+                    /*for (int i = 2*4; i < 3 * 4-2; ++i) {
+                        glsl_shader += std::string(nest_depth, '\t') + "map = out_map[";
+                        glsl_shader += std::to_string(i / 4);
+                        glsl_shader += "][";
+                        glsl_shader += std::to_string(i % 4);
+                        glsl_shader += "];\n";
+                        glsl_shader += std::string(nest_depth, '\t') + "o[map / 4][map % 4] = output_regs[";
+                        //glsl_shader += std::string(nest_depth, '\t') + "o[";
+                        //glsl_shader += std::to_string(i / 4);
+                        //glsl_shader += "][";
+                        //glsl_shader += std::to_string(i % 4);
+                        //glsl_shader += "]";
+                        //glsl_shader += " = output_regs[";
+                        glsl_shader += std::to_string(i / 4);
+                        glsl_shader += "][";
+                        glsl_shader += std::to_string(i % 4);
+                        glsl_shader += "];\n";
+                    }*/
+                    //glsl_shader += std::string(nest_depth, '\t') + "o[3][0] = output_regs[2][0];";
+                    //glsl_shader += std::string(nest_depth, '\t') + "o[3][1] = output_regs[2][1];";
+
+
+                    //so i think this actually needs to be a 1d texture
+                    //technically input_regs shouldnt be working either
+                    //since non-const/non-loop-index index to array
+                    ///so roll in and out maps into same 1d texture
+                    //probably make it big enough to fit all 16 in maps and 7 out maps regarless of num_attrs so no resizing necessary
+
+
+
+                    glsl_shader += std::string(nest_depth, '\t') + "for (int i = 0; i < 7 * 4; ++i) {\n";
                     nest_depth++;
                     glsl_shader += std::string(nest_depth, '\t') + "int map = out_map[i / 4][i % 4];\n";
                     glsl_shader += std::string(nest_depth, '\t') + "o[map / 4][map % 4] = output_regs[i / 4][i % 4];\n";
@@ -860,7 +913,7 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
                     glsl_shader += std::string(nest_depth, '\t') + "}\n";
                     glsl_shader += std::string(nest_depth, '\t') + "gl_Position = vec4(output_regs[0].x, -output_regs[0].y, -output_regs[0].z, output_regs[0].w);\n";
                     nest_depth--;
-                    glsl_shader += std::string(nest_depth, '\t') + "}// END";
+                    glsl_shader += std::string(nest_depth, '\t') + "}// END\n";
                 } else {
                     glsl_shader += "\n";
                 }

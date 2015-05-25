@@ -274,7 +274,7 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
                                       float24_values.y.ToFloat32(),
                                       float24_values.z.ToFloat32(),
                                       float24_values.w.ToFloat32() };
-        LOG_CRITICAL(Render_OpenGL, "f %d %f %f %f %f", uniform_setup.index.Value(), gl_float_values[0], gl_float_values[1], gl_float_values[2], gl_float_values[3]);
+        //LOG_CRITICAL(Render_OpenGL, "f %d %f %f %f %f", uniform_setup.index.Value(), gl_float_values[0], gl_float_values[1], gl_float_values[2], gl_float_values[3]);
         glUniform4fv(uniform_c + uniform_setup.index, 1, gl_float_values);
         break;
     }
@@ -342,7 +342,7 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
                          regs.vs_output_attributes[index].map_z,
                          regs.vs_output_attributes[index].map_w
         };
-        //LOG_CRITICAL(Render_OpenGL, "outmap %d - %d %d %d %d", index, maps[0], maps[1], maps[2], maps[3]);
+        LOG_CRITICAL(Render_OpenGL, "outmap %d - %d %d %d %d", index, maps[0], maps[1], maps[2], maps[3]);
         glUniform4iv(uniform_out_map + index, 1, maps);
         break;
     }
