@@ -163,7 +163,7 @@ vec4 GetSource(int source) {
         return texture(tex[1], o[3].zw);
     } else if (source == SOURCE_TEXTURE2) {
         // TODO: Unverified
-        return texture(tex[2], o[4].xy);
+        return texture(tex[2], o[5].zw);
     } else if (source == SOURCE_TEXTURE3) {
         // TODO: no 4th texture?
     } else if (source == SOURCE_PREVIOUSBUFFER) {
@@ -272,9 +272,9 @@ float AlphaCombine(int op, float alpha[3]) {
 void main(void) {
 
 
-color = texture(tex[0], o[3].xy);
+//color = texture(tex[0], o[3].xy);
 //color = vec4(1.0, 0.0, 0.0, 1.0);
-return;
+//return;
 
 
 

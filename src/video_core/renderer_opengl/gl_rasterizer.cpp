@@ -258,27 +258,6 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
         break;
     }
 
-    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[0], 0x2c1):
-    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[1], 0x2c2):
-    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[2], 0x2c3):
-    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[3], 0x2c4):
-    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[4], 0x2c5):
-    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[5], 0x2c6):
-    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[6], 0x2c7):
-    case PICA_REG_INDEX_WORKAROUND(vs_uniform_setup.set_value[7], 0x2c8):
-    {
-        
-        const auto& uniform_setup = regs.vs_uniform_setup;
-        const auto& float24_values = Pica::g_state.vs.uniforms.f[uniform_setup.index];
-        GLfloat gl_float_values[] = { float24_values.x.ToFloat32(),
-                                      float24_values.y.ToFloat32(),
-                                      float24_values.z.ToFloat32(),
-                                      float24_values.w.ToFloat32() };
-        //LOG_CRITICAL(Render_OpenGL, "f %d %f %f %f %f", uniform_setup.index.Value(), gl_float_values[0], gl_float_values[1], gl_float_values[2], gl_float_values[3]);
-        glUniform4fv(uniform_c + uniform_setup.index, 1, gl_float_values);
-        break;
-    }
-
     case PICA_REG_INDEX(vs_input_register_map.attribute0_register):
     {
         //LOG_CRITICAL(Render_OpenGL, "asdf");
@@ -770,6 +749,16 @@ void RasterizerOpenGL::SyncShader() {
     }
 
     LocateUniforms(state.draw.shader_program);
+}
+
+void RasterizerOpenGL::SyncFloatUniform(u32 uniform_index) {
+    const auto& float24_values = Pica::g_state.vs.uniforms.f[uniform_index];
+    GLfloat gl_float_values[] = { float24_values.x.ToFloat32(),
+                                  float24_values.y.ToFloat32(),
+                                  float24_values.z.ToFloat32(),
+                                  float24_values.w.ToFloat32() };
+    //LOG_CRITICAL(Render_OpenGL, "f %d %f %f %f %f", uniform_index, gl_float_values[0], gl_float_values[1], gl_float_values[2], gl_float_values[3]);
+    glUniform4fv(uniform_c + uniform_index, 1, gl_float_values);
 }
 
 void RasterizerOpenGL::SyncCullMode() {

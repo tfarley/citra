@@ -43,78 +43,6 @@ bvec2 cmp;
 
 )";
 
-const char blargshader[] = R"(#version 150
-
-in vec4 v[16];
-
-out vec4 o[7];
-
-uniform int num_attrs;
-uniform int attr_map[16];
-uniform ivec4 out_map[16];
-uniform vec4 c[96];
-uniform bool b[16];
-uniform ivec4 i[4];
-uniform int aL;
-
-vec4 input_regs[16];
-vec4 output_regs[16];
-vec4 r[16];
-ivec2 idx;
-bvec2 cmp;
-
-//blargshader
-void main() {
-        //r[0] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[1] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[2] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[3] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[4] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[5] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[6] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[7] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[8] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[9] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[10] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[11] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[12] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[13] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[14] = vec4(0.0, 0.0, 0.0, 0.0);
-        //r[15] = vec4(0.0, 0.0, 0.0, 0.0);
-        //idx = ivec2(0, 0);
-        //cmp = bvec2(false, false);
-        //for (int i = 0; i < num_attrs; ++i) {
-        //        int map = attr_map[i];
-        //        input_regs[map] = v[i];
-        //}
-        r[10].xyz = v[0].xyz;
-        r[10].w = 1.0;//PROBLEM: c[5].x is 0.0 when it should be 1.0 look at blarg source and make sure it shouldn't be w - maybe swizzles are screwed or float uniforms are
-        output_regs[0].x = dot(c[32], r[10]);
-        output_regs[0].y = dot(c[33], r[10]);
-        output_regs[0].z = dot(c[34], r[10]);
-        output_regs[0].w = dot(c[35], r[10]);
-        output_regs[2] = v[1];
-        output_regs[1] = c[5].wwww;
-o[0] = output_regs[0];
-o[1] = output_regs[1];
-o[2] = output_regs[2];
-//thi gets optimized out or something... might have to unroll loop in constructor and for input_regs?
-        //for (int i = 0; i < 16 * 4; ++i) {
-        //        int map = out_map[i / 4][i % 4];
-        //        o[map / 4][map % 4] = output_regs[i / 4][i % 4];
-        //}
-//o[2] = v[1];
-        gl_Position = vec4(output_regs[0].x, -output_regs[0].y, -output_regs[0].z, output_regs[0].w);
-}// END
-
-)";
-
-/*
-output_regs[0].x = dot(vec4(0.008, 0.0, 0.0, -1.0), r[10]);
-output_regs[0].y = dot(vec4(0.0, 0.005, 0.0, -1.0), r[10]);
-output_regs[0].z = dot(vec4(0.0, 0.0, 1.0, -1.0), r[10]);
-output_regs[0].w = dot(vec4(0.0, 0.0, 0.0, 1.0), r[10]);*/
-
 class IfElseData
 {
 public:
@@ -132,49 +60,43 @@ std::vector<IfElseData> g_if_else_offset_list;
 std::map<u32, std::string> g_fn_offset_map;
 u32 g_cur_fn_entry;
 
-u32 GetRegMaskLen(u32 v)
+u32 GetRegMaskLen(const nihstro::SwizzlePattern& swizzle)
 {
-    u32 out = 0;
+    u32 length = 0;
 
-    if (v & 0xF) {
-        if (v & (1 << 3)) {
-            out++;
-        }
-        if (v & (1 << 2)) {
-            out++;
-        }
-        if (v & (1 << 1)) {
-            out++;
-        }
-        if (v & 1) {
-            out++;
-        }
+    if (swizzle.DestComponentEnabled(0)) {
+        length++;
+    }
+    if (swizzle.DestComponentEnabled(1)) {
+        length++;
+    }
+    if (swizzle.DestComponentEnabled(2)) {
+        length++;
+    }
+    if (swizzle.DestComponentEnabled(3)) {
+        length++;
     }
 
-    return out;
+    return length;
 }
 
-std::string ParseComponentMask(u32 v, u32 comp_num) {
-    std::string out;
+std::string DestMaskToString(const nihstro::SwizzlePattern& swizzle, u32 comp_num) {
+    std::string out(".");
 
-    if (v & 0xF) {
-        out += ".";
-
-        if (v & (1 << 3) && (comp_num == 0 || comp_num == 1)) {
-            out += "x";
-        }
-        if (v & (1 << 2) && (comp_num == 0 || comp_num == 2)) {
-            out += "y";
-        }
-        if (v & (1 << 1) && (comp_num == 0 || comp_num == 3)) {
-            out += "z";
-        }
-        if (v & 1 && (comp_num == 0 || comp_num == 4)) {
-            out += "w";
-        }
+    if (swizzle.DestComponentEnabled(0) && (comp_num == 0 || comp_num == 1)) {
+        out += "x";
+    }
+    if (swizzle.DestComponentEnabled(1) && (comp_num == 0 || comp_num == 2)) {
+        out += "y";
+    }
+    if (swizzle.DestComponentEnabled(2) && (comp_num == 0 || comp_num == 3)) {
+        out += "z";
+    }
+    if (swizzle.DestComponentEnabled(3) && (comp_num == 0 || comp_num == 4)) {
+        out += "w";
     }
 
-    if (out.compare(".xyzw") == 0) {
+    if (out.compare(".") == 0 || out.compare(".xyzw") == 0) {
         return std::string();
     }
 
@@ -182,26 +104,8 @@ std::string ParseComponentMask(u32 v, u32 comp_num) {
 }
 
 std::string SwizzleToString(const nihstro::SwizzlePattern& swizzle, u32 srcidx, bool clamp_swizzle) {
-    //u32 maxLen = clamp_swizzle ? GetRegMaskLen(v) : 4;
-
-
-    // TODO: use nihstro for all this crud instead of doing it manually from aemstro (probably outdated anyway)
-    // refer to shader interpreter
-    //like const SwizzlePattern& swizzle = *(SwizzlePattern*)&swizzle_data[instr.common.operand_desc_id];
-
-    //const nihstro::SwizzlePattern swizzle = *reinterpret_cast<nihstro::SwizzlePattern>(v);
-    
-
-    //return swizzle.DestMaskToString();
-
-
-    //bleh, just redo all of this with nihstro stuff
-
-    //v = (v >> (5 + 9 * srcidx)) & 0xFF;
-    //const nihstro::SwizzlePattern& swizzle = *(nihstro::SwizzlePattern*)&v;
     std::string out(".");
     
-    //swizzle.src1_selector_0
     static const char comp[] = { 'x', 'y', 'z', 'w' };
     if (srcidx == 0) {
         if (clamp_swizzle && swizzle.DestComponentEnabled(0)) out += comp[(unsigned)swizzle.src1_selector_0.Value()];
@@ -219,11 +123,6 @@ std::string SwizzleToString(const nihstro::SwizzlePattern& swizzle, u32 srcidx, 
         if (clamp_swizzle && swizzle.DestComponentEnabled(2)) out += comp[(unsigned)swizzle.src3_selector_2.Value()];
         if (clamp_swizzle && swizzle.DestComponentEnabled(3)) out += comp[(unsigned)swizzle.src3_selector_3.Value()];
     }
-    /*for (u32 i = 0; i < maxLen; ++i) {
-        out += comp[(v >> ((3 - i) * 2)) & 0x3];
-    }*/
-
-    //out += swizzle.DestMaskToString();
 
     if (out.compare(".") == 0 || out.compare(".xyzw") == 0) {
         return std::string();
@@ -232,7 +131,7 @@ std::string SwizzleToString(const nihstro::SwizzlePattern& swizzle, u32 srcidx, 
     return out;
 }
 
-std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted, const u32* swizzle_data, u32 srcidx, bool clamp_swizzle) {
+std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted, const nihstro::SwizzlePattern* swizzle_data, u32 srcidx, bool clamp_swizzle) {
     std::string reg_text;
 
     u32 swizzle_idx;
@@ -242,7 +141,7 @@ std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted,
         swizzle_idx = instr.common.operand_desc_id.Value();
     }
 
-    const nihstro::SwizzlePattern& swizzle = *(nihstro::SwizzlePattern*)&swizzle_data[swizzle_idx];
+    const nihstro::SwizzlePattern& swizzle = swizzle_data[swizzle_idx];
     bool is_negated = (srcidx == 0 && swizzle.negate_src1) ||
                       (srcidx == 1 && swizzle.negate_src2) ||
                       (srcidx == 2 && swizzle.negate_src3);
@@ -299,7 +198,7 @@ std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted,
     return (is_negated ? "-" : "") + reg_text + SwizzleToString(swizzle, srcidx, clamp_swizzle);
 }
 
-std::string RegTxtDst(u8 v, u32 mask, u32 comp_num) {
+std::string RegTxtDst(u8 v, const nihstro::SwizzlePattern& swizzle, u32 comp_num) {
     std::string reg_text;
 
     if (v < 0x10) {
@@ -316,10 +215,10 @@ std::string RegTxtDst(u8 v, u32 mask, u32 comp_num) {
         reg_text += "]";
     }
 
-    return reg_text + ParseComponentMask(mask, comp_num);
+    return reg_text + DestMaskToString(swizzle, comp_num);
 }
 
-std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data) {
+std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePattern* swizzle_data) {
     std::string instr_text;
 
     nihstro::OpCode::Info info = instr.opcode.Value().GetInfo();
@@ -368,11 +267,19 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
                 instr_text += RegTxtDst(instr.common.dest.Value(), swizzle_data[instr.common.operand_desc_id.Value()], mask_len);
             }
 
-            instr_text += " = dot(";
-            instr_text += src1;
-            instr_text += ", ";
-            instr_text += src2;
-            instr_text += ");\n";
+            if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::DP3) {
+                instr_text += " = dot(vec3(";
+                instr_text += src1;
+                instr_text += "), vec3(";
+                instr_text += src2;
+                instr_text += "));\n";
+            } else {
+                instr_text += " = dot(";
+                instr_text += src1;
+                instr_text += ", ";
+                instr_text += src2;
+                instr_text += ");\n";
+            }
 
             break;
         }
@@ -727,9 +634,8 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const u32* swizzle_data)
     return instr_text;
 }
 
-std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, const u32* swizzle_data) {
-    //return blargshader;
-
+std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, const u32* swizzle_raw_data) {
+    const nihstro::SwizzlePattern* swizzle_data = (nihstro::SwizzlePattern*)swizzle_raw_data;
 
     std::string glsl_shader(g_glsl_shader_header);
 

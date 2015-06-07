@@ -39,6 +39,8 @@ public:
     /// Commit the rasterizer's framebuffer contents immediately to the current 3DS memory framebuffer
     virtual void CommitFramebuffer() = 0;
 
+    virtual void SyncFloatUniform(u32 uniform_index) = 0;
+
     /// Notify rasterizer that the specified PICA register has been changed
     virtual void NotifyPicaRegisterChanged(u32 id) = 0;
 

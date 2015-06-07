@@ -10,4 +10,4 @@
 #include <string>
 
 // TODO: Add function to construct fragment shader to avoid branches and such
-std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, const u32* swizzle_data);
+std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, const u32* swizzle_raw_data);
