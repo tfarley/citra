@@ -342,8 +342,8 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
                          regs.vs_output_attributes[index].map_z,
                          regs.vs_output_attributes[index].map_w
         };
-        LOG_CRITICAL(Render_OpenGL, "outmap %d - %d %d %d %d", index, maps[0], maps[1], maps[2], maps[3]);
-        glUniform4iv(uniform_out_map + index, 1, maps);
+        //LOG_CRITICAL(Render_OpenGL, "outmap %d - %d %d %d %d", index, maps[0], maps[1], maps[2], maps[3]);
+        glUniform1iv(uniform_out_map + index * 4, 4, maps);
         break;
     }
 
@@ -931,7 +931,7 @@ void RasterizerOpenGL::SyncDrawState() {
     }
 
     glUniform1i(uniform_num_attrs, Pica::g_state.regs.vertex_attributes.GetNumTotalAttributes());
-    LOG_CRITICAL(Render_OpenGL, "%d", Pica::g_state.regs.vertex_attributes.GetNumTotalAttributes());
+    //LOG_CRITICAL(Render_OpenGL, "%d", Pica::g_state.regs.vertex_attributes.GetNumTotalAttributes());
 
     state.Apply();
 }

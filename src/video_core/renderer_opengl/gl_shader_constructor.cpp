@@ -12,22 +12,31 @@
 
 #include "common/string_util.h"
 
-const char g_glsl_shader_header[] = R"(#version 150
+const char g_glsl_shader_header[] = R"(
+#version 150 core
 
-in vec4 v[16];
+#define NUM_ATTR 16
+#define NUM_OUT 7
 
-out vec4 o[7];
+#define NUM_UNIFORM_FLOATVEC 96
+#define NUM_UNIFORM_BOOL 16
+#define NUM_UNIFORM_INTVEC 4
+
+in vec4 v[NUM_ATTR];
+
+out vec4 o[NUM_OUT];
 
 uniform int num_attrs;
-uniform int attr_map[16];
-uniform ivec4 out_map[16];
-uniform vec4 c[96];
-uniform bool b[16];
-uniform ivec4 i[4];
+uniform int attr_map[NUM_ATTR];
+uniform int out_map[NUM_ATTR * 4];
+uniform vec4 c[NUM_UNIFORM_FLOATVEC];
+uniform bool b[NUM_UNIFORM_BOOL];
+uniform ivec4 i[NUM_UNIFORM_INTVEC];
 uniform int aL;
 
-vec4 input_regs[16];
-vec4 output_regs[16];
+float o_tmp[NUM_OUT * 4];
+vec4 input_regs[NUM_ATTR];
+vec4 output_regs[NUM_ATTR];
 vec4 r[16];
 ivec2 idx;
 bvec2 cmp;
@@ -238,26 +247,26 @@ std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted,
                       (srcidx == 1 && swizzle.negate_src2) ||
                       (srcidx == 2 && swizzle.negate_src3);
 
-    u8 v;
+    nihstro::SourceRegister reg;
     if (is_mad) {
         if (srcidx == 0) {
-            v = instr.mad.src1.Value();
+            reg = instr.mad.GetSrc1(is_inverted);
         } else if (srcidx == 1) {
-            v = instr.mad.src2.Value();
+            reg = instr.mad.GetSrc2(is_inverted);
         } else if (srcidx == 2) {
-            v = instr.mad.src3.Value();
+            reg = instr.mad.GetSrc3(is_inverted);
         } else {
             // Should never happen
-            v = 0;
+            reg = 0;
         }
     } else {
         if (srcidx == 0) {
-            v = instr.common.GetSrc1(is_inverted);
+            reg = instr.common.GetSrc1(is_inverted);
         } else if (srcidx == 1) {
-            v = instr.common.GetSrc2(is_inverted);
+            reg = instr.common.GetSrc2(is_inverted);
         } else {
             // Should never happen
-            v = 0;
+            reg = 0;
         }
     }
 
@@ -276,39 +285,16 @@ std::string RegTxtSrc(nihstro::Instruction instr, bool is_mad, bool is_inverted,
         index_string = "";
     }
 
-    if (v < 0x80) {
-        if (v < 0x10) {
-            reg_text += "input_regs[";
-            reg_text += std::to_string(v & 0xF);
-            reg_text += index_string;
-            reg_text += "]";
-        } else if (v < 0x20) {
-            reg_text += "r[";
-            reg_text += std::to_string(v - 0x10);
-            reg_text += index_string;
-            reg_text += "]";
-        } else if (v < 0x80) {
-            reg_text += "c[";
-            reg_text += std::to_string(v - 0x20);
-            reg_text += index_string;
-            reg_text += "]";
-        } else {
-            reg_text += "r[";
-            reg_text += std::to_string(v);
-            reg_text += index_string;
-            reg_text += "]";
-        }
-    } else if (v < 0x88) {
-        reg_text += "i[";
-        reg_text += std::to_string(v - 0x80);
-        reg_text += index_string;
-        reg_text += "]";
+    if (reg.GetRegisterType() == nihstro::RegisterType::Input) {
+        reg_text += "input_regs[";
+    } else if (reg.GetRegisterType() == nihstro::RegisterType::Temporary) {
+        reg_text += "r[";
     } else {
-        reg_text += "b[";
-        reg_text += std::to_string(v - 0x88);
-        reg_text += index_string;
-        reg_text += "]";
+        reg_text += "c[";
     }
+    reg_text += std::to_string(reg.GetIndex());
+    reg_text += index_string;
+    reg_text += "]";
 
     return (is_negated ? "-" : "") + reg_text + SwizzleToString(swizzle, srcidx, clamp_swizzle);
 }
@@ -853,8 +839,7 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
 
             glsl_shader += std::string(nest_depth, '\t') + "for (int i = 0; i < num_attrs; ++i) {\n";
             nest_depth++;
-            glsl_shader += std::string(nest_depth, '\t') + "int map = attr_map[i];\n";
-            glsl_shader += std::string(nest_depth, '\t') + "input_regs[map] = v[i];\n";
+            glsl_shader += std::string(nest_depth, '\t') + "input_regs[attr_map[i]] = v[i];\n";
             nest_depth--;
             glsl_shader += std::string(nest_depth, '\t') + "}\n";
 
@@ -905,12 +890,19 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
 
 
 
-                    glsl_shader += std::string(nest_depth, '\t') + "for (int i = 0; i < 7 * 4; ++i) {\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "// o_tmp[] needed to allow for const-index into o[]\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "for (int i = 0; i < 16 * 4; ++i) {\n";
                     nest_depth++;
-                    glsl_shader += std::string(nest_depth, '\t') + "int map = out_map[i / 4][i % 4];\n";
-                    glsl_shader += std::string(nest_depth, '\t') + "o[map / 4][map % 4] = output_regs[i / 4][i % 4];\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "o_tmp[out_map[i]] = output_regs[i / 4][i % 4];\n";
                     nest_depth--;
                     glsl_shader += std::string(nest_depth, '\t') + "}\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "o[0] = vec4(o_tmp[0], o_tmp[1], o_tmp[2], o_tmp[3]);\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "o[1] = vec4(o_tmp[4], o_tmp[5], o_tmp[6], o_tmp[7]);\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "o[2] = vec4(o_tmp[8], o_tmp[9], o_tmp[10], o_tmp[11]);\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "o[3] = vec4(o_tmp[12], o_tmp[13], o_tmp[14], o_tmp[15]);\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "o[4] = vec4(o_tmp[16], o_tmp[17], o_tmp[18], o_tmp[19]);\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "o[5] = vec4(o_tmp[20], o_tmp[21], o_tmp[22], o_tmp[23]);\n";
+                    glsl_shader += std::string(nest_depth, '\t') + "o[6] = vec4(o_tmp[24], o_tmp[25], o_tmp[26], o_tmp[27]);\n";
                     glsl_shader += std::string(nest_depth, '\t') + "gl_Position = vec4(output_regs[0].x, -output_regs[0].y, -output_regs[0].z, output_regs[0].w);\n";
                     nest_depth--;
                     glsl_shader += std::string(nest_depth, '\t') + "}// END\n";
