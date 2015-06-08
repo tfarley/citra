@@ -394,7 +394,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
 
         default:
         {
-            instr_text = Common::StringFromFormat("// Unknown Arithmetic instruction 0x%08X\n", *((u32*)&instr));
+            instr_text = Common::StringFromFormat("// WARNING: Unknown Arithmetic instruction 0x%08X\n", *((u32*)&instr));
             break;
         }
         }
@@ -416,10 +416,10 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
                     instr_text += call_offset->second;
                     instr_text += "();\n";
                 } else {
-                    instr_text = "// CALL to unknown offset\n";
+                    instr_text = "// WARNING: CALL to unknown offset\n";
                 }
             } else {
-                instr_text = "// Culled recursive CALL\n";
+                instr_text = "// WARNING: Culled recursive CALL\n";
             }
 
             break;
@@ -473,14 +473,14 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
                         break;
 
                     default:
-                        instr_text = "// Bad CALLC condition op\n";
+                        instr_text = "// WARNING: Bad CALLC condition op\n";
                         break;
                     }
                 } else {
-                    instr_text = "// CALLC to unknown offset\n";
+                    instr_text = "// WARNING: CALLC to unknown offset\n";
                 }
             } else {
-                instr_text = "// Culled recursive CALLC\n";
+                instr_text = "// WARNING: Culled recursive CALLC\n";
             }
 
             break;
@@ -523,7 +523,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
                 break;
 
             default:
-                instr_text = "// Bad IFC condition op\n";
+                instr_text = "// WARNING: Bad IFC condition op\n";
                 break;
             }
 
@@ -533,19 +533,19 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
         case nihstro::OpCode::Id::JMPC:
         {
             // TODO: figure out how to function split with JMPs
-            instr_text = "// JMPC not supported by GLSL\n";
+            instr_text = "// WARNING: JMPC not supported by GLSL\n";
             break;
         }
 
         case nihstro::OpCode::Id::JMPU:
         {
-            instr_text = "// JMPU not supported by GLSL\n";
+            instr_text = "// WARNING: JMPU not supported by GLSL\n";
             break;
         }
 
         default:
         {
-            instr_text = Common::StringFromFormat("// Unknown Conditional instruction 0x%08X\n", *((u32*)&instr));
+            instr_text = Common::StringFromFormat("// WARNING: Unknown Conditional instruction 0x%08X\n", *((u32*)&instr));
             break;
         }
         }
@@ -564,10 +564,10 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
                     instr_text += call_offset->second;
                     instr_text += "(); }\n";
                 } else {
-                    instr_text = "// CALLU to unknown offset\n";
+                    instr_text = "// WARNING: CALLU to unknown offset\n";
                 }
             } else {
-                instr_text = "// Culled recursive CALLU\n";
+                instr_text = "// WARNING: Culled recursive CALLU\n";
             }
 
             break;
@@ -586,13 +586,13 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
             // TODO: implement this
             // make it push an IfElseData(offset, 0) and the end brace will automatically be added
             // hopefully that doesnt get out of order with an if+else though - because it might put a bracket after the else?
-            instr_text = "// LOOP not yet implemented\n";
+            instr_text = "// WARNING: LOOP not yet implemented\n";
             break;
         }
 
         default:
         {
-            instr_text = Common::StringFromFormat("// Unknown UniformFlowControl instruction 0x%08X\n", *((u32*)&instr));
+            instr_text = Common::StringFromFormat("// WARNING: Unknown UniformFlowControl instruction 0x%08X\n", *((u32*)&instr));
             break;
         }
         }
@@ -605,7 +605,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
         switch (instr.opcode.Value().EffectiveOpCode())
         {
         case nihstro::OpCode::Id::MADI:
-            instr_text = "// MADI not yet implemented\n";
+            instr_text = "// WARNING: MADI not yet implemented\n";
             break;
 
         case nihstro::OpCode::Id::MAD:
@@ -620,15 +620,15 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
             break;
 
         default:
-            instr_text = Common::StringFromFormat("// Unknown MultiplyAdd instruction 0x%08X\n", *((u32*)&instr));
+            instr_text = Common::StringFromFormat("// WARNING: Unknown MultiplyAdd instruction 0x%08X\n", *((u32*)&instr));
             break;
         }
     } else if (info.type == nihstro::OpCode::Type::Trivial) {
         instr_text = "// Ignored trivial\n";
     } else if (info.type == nihstro::OpCode::Type::SetEmit) {
-        instr_text = "// Unimplemented setemit\n";
+        instr_text = "// WARNING: Unimplemented setemit\n";
     } else {
-        instr_text = Common::StringFromFormat("// Unknown instruction 0x%08X\n", *((u32*)&instr));
+        instr_text = Common::StringFromFormat("// WARNING: Unknown instruction 0x%08X\n", *((u32*)&instr));
     }
 
     return instr_text;

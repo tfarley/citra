@@ -71,7 +71,11 @@ void RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offse
         std::unique_ptr<OGLShader> new_shader = Common::make_unique<OGLShader>();
 
         new_shader->Create(PICAVertexShaderToGLSL(main_offset, shader_data, swizzle_data).c_str(), GLShaders::g_fragment_shader_hw);
-        LOG_CRITICAL(Render_OpenGL, "%s", PICAVertexShaderToGLSL(main_offset, shader_data, swizzle_data).c_str());
+        std::string shader_string = PICAVertexShaderToGLSL(main_offset, shader_data, swizzle_data);
+        //FILE *file = fopen("s.txt", "w");
+        //fwrite(shader_string.c_str(), 1, shader_string.length(), file);
+        //fclose(file);
+        LOG_CRITICAL(Render_OpenGL, "%s", shader_string.c_str());
         state.draw.shader_program = new_shader->handle;
 
         vertex_shader_cache.emplace(main_offset, std::move(new_shader));

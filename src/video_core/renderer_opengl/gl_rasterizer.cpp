@@ -244,7 +244,12 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
 
     case PICA_REG_INDEX(vs_bool_uniforms):
         //LOG_CRITICAL(Render_OpenGL, "bbbbb");
-        glUniform1iv(uniform_b, 16, (const GLint*)Pica::g_state.vs.uniforms.b.data());
+        for (unsigned i = 0; i < 16; ++i) {
+            if (uniform_b[i] != -1)
+                glUniform1i(uniform_b[i], Pica::g_state.vs.uniforms.b[i]);
+            //else
+            //    LOG_WARNING(Render_OpenGL, "Attempted to write to bool uniform not used in shader");
+        }
         break;
 
     case PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[0], 0x2b1):
@@ -254,7 +259,10 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
     {
         //LOG_CRITICAL(Render_OpenGL, "iiiii");
         int index = (id - PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[0], 0x2b1));
-        glUniform4iv(uniform_i + index, 1, (const GLint*)&Pica::g_state.vs.uniforms.i[index]);
+        if (uniform_i[index] != -1)
+            glUniform4iv(uniform_i[index], 1, (const GLint*)&Pica::g_state.vs.uniforms.i[index]);
+        else
+            LOG_WARNING(Render_OpenGL, "Attempted to write to int uniform not used in shader");
         break;
     }
 
@@ -555,9 +563,13 @@ void RasterizerOpenGL::LocateUniforms(GLuint shader_handle) {
     uniform_num_attrs = glGetUniformLocation(shader_handle, "num_attrs");
     uniform_attr_map = glGetUniformLocation(shader_handle, "attr_map");
     uniform_out_map = glGetUniformLocation(shader_handle, "out_map");
-    uniform_c = glGetUniformLocation(shader_handle, "c");
-    uniform_b = glGetUniformLocation(shader_handle, "b");
-    uniform_i = glGetUniformLocation(shader_handle, "i");
+
+    for (unsigned i = 0; i < 96; ++i)
+        uniform_c[i] = glGetUniformLocation(shader_handle, ("c[" + std::to_string(i) + "]").c_str());
+    for (unsigned i = 0; i < 16; ++i)
+        uniform_b[i] = glGetUniformLocation(shader_handle, ("b[" + std::to_string(i) + "]").c_str());
+    for (unsigned i = 0; i < 4; ++i)
+        uniform_i[i] = glGetUniformLocation(shader_handle, ("i[" + std::to_string(i) + "]").c_str());
 }
 
 void RasterizerOpenGL::ReconfigureColorTexture(TextureInfo& texture, Pica::Regs::ColorFormat format, u32 width, u32 height) {
@@ -758,7 +770,10 @@ void RasterizerOpenGL::SyncFloatUniform(u32 uniform_index) {
                                   float24_values.z.ToFloat32(),
                                   float24_values.w.ToFloat32() };
     //LOG_CRITICAL(Render_OpenGL, "f %d %f %f %f %f", uniform_index, gl_float_values[0], gl_float_values[1], gl_float_values[2], gl_float_values[3]);
-    glUniform4fv(uniform_c + uniform_index, 1, gl_float_values);
+    if (uniform_c[uniform_index] != -1)
+        glUniform4fv(uniform_c[uniform_index], 1, gl_float_values);
+    else
+        LOG_WARNING(Render_OpenGL, "Attempted to write to float uniform not used in shader");
 }
 
 void RasterizerOpenGL::SyncCullMode() {

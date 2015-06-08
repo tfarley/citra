@@ -224,7 +224,7 @@ private:
     GLuint uniform_num_attrs;
     GLuint uniform_attr_map;
     GLuint uniform_out_map;
-    GLuint uniform_c;
-    GLuint uniform_b;
-    GLuint uniform_i;
+    GLuint uniform_c[96];
+    GLuint uniform_b[16];
+    GLuint uniform_i[4];
 };
