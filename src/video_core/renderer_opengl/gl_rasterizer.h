@@ -120,6 +120,16 @@ private:
 
     void SyncShader();
 
+    void SyncBoolUniforms();
+
+    void SyncIntUniform(u32 uniform_index);
+
+    void SyncFirstInMap();
+
+    void SyncSecondInMap();
+
+    void SyncOutMap(u32 map_index);
+
     /// Syncs the cull mode to match the PICA register
     void SyncCullMode();
 

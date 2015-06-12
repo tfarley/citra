@@ -664,9 +664,11 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
         }
     }
 
+    int instr_index;
+
     // Second pass: translate instructions
-    for (int i = 0; i < 1024; ++i) {
-        if (shader_data[i] == 0x0000000) {
+    for (instr_index = 0; instr_index < 1024; ++instr_index) {
+        if (shader_data[instr_index] == 0x0000000) {
             break;
         }
 
@@ -701,25 +703,25 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
         }
 
         // Consume function offset if points to current offset
-        std::map<u32, std::string>::iterator fn_offset = g_fn_offset_map.find(i);
+        std::map<u32, std::string>::iterator fn_offset = g_fn_offset_map.find(instr_index);
         if (fn_offset != g_fn_offset_map.end()) {
             if (nest_depth > 0) {
                 nest_depth--;
                 glsl_shader += std::string(nest_depth, '\t') + "}\n\n";
             }
 
-            g_cur_fn_entry = i;
+            g_cur_fn_entry = instr_index;
 
             glsl_shader += std::string(nest_depth, '\t') + "void " + fn_offset->second + "() {\n";
             nest_depth++;
-        } else if (i == main_offset) {
+        } else if (instr_index == main_offset) {
             // Hit entry point - get out of nested block if we're in one
             while (nest_depth > 0) {
                 nest_depth--;
                 glsl_shader += std::string(nest_depth, '\t') + "}\n\n";
             }
 
-            g_cur_fn_entry = i;
+            g_cur_fn_entry = instr_index;
 
             glsl_shader += std::string(nest_depth, '\t') + "void main() {\n";
             nest_depth++;
@@ -755,7 +757,7 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
         // Translate instruction at current offset
         // All instructions have to be in main or a function, else we've overrun actual shader data
         if (nest_depth > 0) {
-            nihstro::Instruction instr = ((nihstro::Instruction*)shader_data)[i];
+            nihstro::Instruction instr = ((nihstro::Instruction*)shader_data)[instr_index];
 
             if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::END) {
                 if (nest_depth > 0) {
@@ -821,7 +823,7 @@ std::string PICAVertexShaderToGLSL(u32 main_offset, const u32* shader_data, cons
                 glsl_shader += std::string(nest_depth, '\t') + PICAInstrToGLSL(instr, swizzle_data);
 
                 if (instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::IFU || instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::IFC) {
-                    g_if_else_offset_list.emplace_back(instr.flow_control.dest_offset.Value() - i, instr.flow_control.num_instructions.Value());
+                    g_if_else_offset_list.emplace_back(instr.flow_control.dest_offset.Value() - instr_index, instr.flow_control.num_instructions.Value());
 
                     nest_depth++;
                 }

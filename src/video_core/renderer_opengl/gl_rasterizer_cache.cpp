@@ -61,13 +61,18 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState& state, unsigned text
     }
 }
 
-void RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offset, const u32* shader_data, const u32* swizzle_data) {
-    auto cached_shader = vertex_shader_cache.find(main_offset);
+bool RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offset, const u32* shader_data, const u32* swizzle_data) {
+    std::string cache_key = std::to_string(main_offset) + std::string(reinterpret_cast<const char*>(shader_data), 1024) + std::string(reinterpret_cast<const char*>(swizzle_data), 1024);
+
+    if (cache_key == cur_shader_key) {
+        return false;
+    }
+
+    auto cached_shader = vertex_shader_cache.find(cache_key);
 
     if (cached_shader != vertex_shader_cache.end()) {
         state.draw.shader_program = cached_shader->second->handle;
-    }
-    else {
+    } else {
         std::unique_ptr<OGLShader> new_shader = Common::make_unique<OGLShader>();
 
         new_shader->Create(PICAVertexShaderToGLSL(main_offset, shader_data, swizzle_data).c_str(), GLShaders::g_fragment_shader_hw);
@@ -78,10 +83,14 @@ void RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offse
         LOG_CRITICAL(Render_OpenGL, "%s", shader_string.c_str());
         state.draw.shader_program = new_shader->handle;
 
-        vertex_shader_cache.emplace(main_offset, std::move(new_shader));
+        vertex_shader_cache.emplace(cache_key, std::move(new_shader));
     }
 
+    cur_shader_key = cache_key;
+
     state.Apply();
+
+    return true;
 }
 
 void RasterizerCacheOpenGL::NotifyFlush(PAddr addr, u32 size) {
