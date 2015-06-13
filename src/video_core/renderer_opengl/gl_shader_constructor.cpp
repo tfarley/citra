@@ -227,13 +227,16 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
         bool is_inverted = info.subtype & nihstro::OpCode::Info::SrcInversed;
 
         bool clamp_swizzle = instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::ADD ||
-            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MUL ||
-            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MAX ||
-            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MIN ||
-            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::RCP ||
-            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::RSQ ||
-            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MOV ||
-            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MOVA;
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MUL  ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::FLR  ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MAX  ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MIN  ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::RCP  ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::RSQ  ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MOV  ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::MOVA ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::SLT  ||
+            instr.opcode.Value().EffectiveOpCode() == nihstro::OpCode::Id::SLTI;
 
         std::string dst = RegTxtDst(instr.common.dest.Value(), swizzle_data[instr.common.operand_desc_id.Value()], 0);
         std::string src1 = RegTxtSrc(instr, false, is_inverted, swizzle_data, 0, clamp_swizzle);
@@ -292,6 +295,15 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
             instr_text += " * ";
             instr_text += src2;
             instr_text += ";\n";
+            break;
+        }
+
+        case nihstro::OpCode::Id::FLR:
+        {
+            instr_text += dst;
+            instr_text += " = floor(";
+            instr_text += src1;
+            instr_text += ");\n";
             break;
         }
 
@@ -374,6 +386,18 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
             break;
         }
 
+        case nihstro::OpCode::Id::SLT:
+        case nihstro::OpCode::Id::SLTI:
+        {
+            instr_text += dst;
+            instr_text += " = lessThan(";
+            instr_text += src1;
+            instr_text += ", ";
+            instr_text += src2;
+            instr_text += ");\n";
+            break;
+        }
+
         case nihstro::OpCode::Id::CMP:
         {
             instr_text += "cmp.x = ";
@@ -394,7 +418,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
 
         default:
         {
-            instr_text = Common::StringFromFormat("// WARNING: Unknown Arithmetic instruction 0x%08X\n", *((u32*)&instr));
+            instr_text = Common::StringFromFormat("// WARNING: Unknown Arithmetic instruction 0x%08X (%s)\n", *((u32*)&instr), info.name);
             break;
         }
         }
@@ -545,7 +569,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
 
         default:
         {
-            instr_text = Common::StringFromFormat("// WARNING: Unknown Conditional instruction 0x%08X\n", *((u32*)&instr));
+            instr_text = Common::StringFromFormat("// WARNING: Unknown Conditional instruction 0x%08X (%s)\n", *((u32*)&instr), info.name);
             break;
         }
         }
@@ -592,7 +616,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
 
         default:
         {
-            instr_text = Common::StringFromFormat("// WARNING: Unknown UniformFlowControl instruction 0x%08X\n", *((u32*)&instr));
+            instr_text = Common::StringFromFormat("// WARNING: Unknown UniformFlowControl instruction 0x%08X (%s)\n", *((u32*)&instr), info.name);
             break;
         }
         }
@@ -620,7 +644,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
             break;
 
         default:
-            instr_text = Common::StringFromFormat("// WARNING: Unknown MultiplyAdd instruction 0x%08X\n", *((u32*)&instr));
+            instr_text = Common::StringFromFormat("// WARNING: Unknown MultiplyAdd instruction 0x%08X (%d)\n", *((u32*)&instr), info.name);
             break;
         }
     } else if (info.type == nihstro::OpCode::Type::Trivial) {
@@ -628,7 +652,7 @@ std::string PICAInstrToGLSL(nihstro::Instruction instr, const nihstro::SwizzlePa
     } else if (info.type == nihstro::OpCode::Type::SetEmit) {
         instr_text = "// WARNING: Unimplemented setemit\n";
     } else {
-        instr_text = Common::StringFromFormat("// WARNING: Unknown instruction 0x%08X\n", *((u32*)&instr));
+        instr_text = Common::StringFromFormat("// WARNING: Unknown instruction 0x%08X (%s)\n", *((u32*)&instr), info.name);
     }
 
     return instr_text;
