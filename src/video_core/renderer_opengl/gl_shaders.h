@@ -149,7 +149,22 @@ vec4 g_last_tex_env_out;
 vec4 g_const_color;
 
 vec4 GetSource(int source) {
-    if (source == SOURCE_PRIMARYCOLOR) {
+    if (source == SOURCE_TEXTURE0 || source == SOURCE_TEXTURE1 || source == SOURCE_TEXTURE2 || source == SOURCE_TEXTURE3) {
+        vec2 uv;
+        if (source == SOURCE_TEXTURE0) {
+            uv = o[3].xy;
+        } else if (source == SOURCE_TEXTURE1) {
+            uv = o[3].zw;
+        } else if (source == SOURCE_TEXTURE2) {
+            // TODO: Unverified
+            uv = o[5].zw;
+        } else if (source == SOURCE_TEXTURE3) {
+            // TODO: no 4th texture?
+        }
+
+        return texture(tex[source - 3], uv);
+    
+    } else if (source == SOURCE_PRIMARYCOLOR) {
         return o[2];
     } else if (source == SOURCE_PRIMARYFRAGMENTCOLOR) {
         // HACK: Until we implement fragment lighting, use primary_color
@@ -157,15 +172,6 @@ vec4 GetSource(int source) {
     } else if (source == SOURCE_SECONDARYFRAGMENTCOLOR) {
         // HACK: Until we implement fragment lighting, use zero
         return vec4(0.0, 0.0, 0.0, 0.0);
-    } else if (source == SOURCE_TEXTURE0) {
-        return texture(tex[0], o[3].xy);
-    } else if (source == SOURCE_TEXTURE1) {
-        return texture(tex[1], o[3].zw);
-    } else if (source == SOURCE_TEXTURE2) {
-        // TODO: Unverified
-        return texture(tex[2], o[5].zw);
-    } else if (source == SOURCE_TEXTURE3) {
-        // TODO: no 4th texture?
     } else if (source == SOURCE_PREVIOUSBUFFER) {
         return g_combiner_buffer;
     } else if (source == SOURCE_CONSTANT) {

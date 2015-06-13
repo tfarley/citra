@@ -42,9 +42,14 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState& state, unsigned text
 
         const auto info = Pica::DebugUtils::TextureInfo::FromPicaRegister(config.config, config.format);
 
+        u32 bpp = Pica::Regs::NibblesPerPixel(info.format) / 2;
+        if (bpp == 0) {
+            bpp = 1;
+        }
+
         new_texture->width = info.width;
         new_texture->height = info.height;
-        new_texture->size = info.width * info.height * Pica::Regs::NibblesPerPixel(info.format);
+        new_texture->size = info.width * info.height * bpp;
 
         u8* texture_src_data = Memory::GetPhysicalPointer(texture_addr);
         std::unique_ptr<Math::Vec4<u8>[]> temp_texture_buffer_rgba(new Math::Vec4<u8>[info.width * info.height]);
@@ -57,6 +62,8 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState& state, unsigned text
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, info.width, info.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp_texture_buffer_rgba.get());
 
+        Memory::SetTextureMem(texture_addr, new_texture->size);
+
         texture_cache.emplace(texture_addr, std::move(new_texture));
     }
 }
@@ -67,6 +74,8 @@ bool RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offse
     if (cache_key == cur_shader_key) {
         return false;
     }
+
+    cur_shader_key = cache_key;
 
     auto cached_shader = vertex_shader_cache.find(cache_key);
 
@@ -86,8 +95,6 @@ bool RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offse
         vertex_shader_cache.emplace(cache_key, std::move(new_shader));
     }
 
-    cur_shader_key = cache_key;
-
     state.Apply();
 
     return true;
@@ -99,6 +106,7 @@ void RasterizerCacheOpenGL::NotifyFlush(PAddr addr, u32 size) {
     auto cache_upper_bound = texture_cache.upper_bound(addr + size);
     for (auto it = texture_cache.begin(); it != cache_upper_bound;) {
         if (MathUtil::IntervalsIntersect(addr, size, it->first, it->second->size)) {
+            Memory::UnSetTextureMem(it->first, it->second->size);
             it = texture_cache.erase(it);
         } else {
             ++it;
