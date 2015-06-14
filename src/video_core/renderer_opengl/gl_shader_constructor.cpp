@@ -156,20 +156,20 @@ std::string SwizzleToString(const nihstro::SwizzlePattern& swizzle, u32 srcidx, 
     
     static const char comp[] = { 'x', 'y', 'z', 'w' };
     if (srcidx == 0) {
-        if (clamp_swizzle && swizzle.DestComponentEnabled(0)) out += comp[(unsigned)swizzle.src1_selector_0.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(1)) out += comp[(unsigned)swizzle.src1_selector_1.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(2)) out += comp[(unsigned)swizzle.src1_selector_2.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(3)) out += comp[(unsigned)swizzle.src1_selector_3.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(0))) out += comp[(unsigned)swizzle.src1_selector_0.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(1))) out += comp[(unsigned)swizzle.src1_selector_1.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(2))) out += comp[(unsigned)swizzle.src1_selector_2.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(3))) out += comp[(unsigned)swizzle.src1_selector_3.Value()];
     } else if (srcidx == 1) {
-        if (clamp_swizzle && swizzle.DestComponentEnabled(0)) out += comp[(unsigned)swizzle.src2_selector_0.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(1)) out += comp[(unsigned)swizzle.src2_selector_1.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(2)) out += comp[(unsigned)swizzle.src2_selector_2.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(3)) out += comp[(unsigned)swizzle.src2_selector_3.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(0))) out += comp[(unsigned)swizzle.src2_selector_0.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(1))) out += comp[(unsigned)swizzle.src2_selector_1.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(2))) out += comp[(unsigned)swizzle.src2_selector_2.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(3))) out += comp[(unsigned)swizzle.src2_selector_3.Value()];
     } else if (srcidx == 2) {
-        if (clamp_swizzle && swizzle.DestComponentEnabled(0)) out += comp[(unsigned)swizzle.src3_selector_0.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(1)) out += comp[(unsigned)swizzle.src3_selector_1.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(2)) out += comp[(unsigned)swizzle.src3_selector_2.Value()];
-        if (clamp_swizzle && swizzle.DestComponentEnabled(3)) out += comp[(unsigned)swizzle.src3_selector_3.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(0))) out += comp[(unsigned)swizzle.src3_selector_0.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(1))) out += comp[(unsigned)swizzle.src3_selector_1.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(2))) out += comp[(unsigned)swizzle.src3_selector_2.Value()];
+        if (!clamp_swizzle || (clamp_swizzle && swizzle.DestComponentEnabled(3))) out += comp[(unsigned)swizzle.src3_selector_3.Value()];
     }
 
     if (out.compare(".") == 0 || out.compare(".xyzw") == 0) {

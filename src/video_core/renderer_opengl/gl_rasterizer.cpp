@@ -770,7 +770,6 @@ void RasterizerOpenGL::SyncFloatUniform(u32 uniform_index) {
                                   float24_values.y.ToFloat32(),
                                   float24_values.z.ToFloat32(),
                                   float24_values.w.ToFloat32() };
-    //LOG_CRITICAL(Render_OpenGL, "f %d %f %f %f %f", uniform_index, gl_float_values[0], gl_float_values[1], gl_float_values[2], gl_float_values[3]);
     if (uniform_c[uniform_index] != -1)
         glUniform4fv(uniform_c[uniform_index], 1, gl_float_values);
     else
@@ -842,7 +841,6 @@ void RasterizerOpenGL::SyncCullMode() {
         UNIMPLEMENTED();
         break;
     }
-    state.cull.enabled = false;
 }
 
 void RasterizerOpenGL::SyncBlendEnabled() {
