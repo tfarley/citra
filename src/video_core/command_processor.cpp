@@ -122,7 +122,7 @@ static inline void WritePicaReg(u32 id, u32 value, u32 mask) {
             PrimitiveAssembler<RawVertex> raw_primitive_assembler(regs.triangle_topology.Value());
             PrimitiveAssembler<DebugUtils::GeometryDumper::Vertex> dumping_primitive_assembler(regs.triangle_topology.Value());
 
-            if (!Settings::values.use_hw_renderer) {
+            if (!Settings::values.use_hw_renderer || !Settings::values.use_hw_vertex_shaders) {
                 for (unsigned int index = 0; index < regs.num_vertices; ++index)
                 {
                     unsigned int vertex = is_indexed ? (index_u16 ? index_address_16[index] : index_address_8[index]) : index;

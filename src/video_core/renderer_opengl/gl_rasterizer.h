@@ -118,7 +118,9 @@ private:
     /// Syncs the state and contents of the OpenGL framebuffer to match the current PICA framebuffer
     void SyncFramebuffer();
 
-    void SyncShader();
+    void SyncShaderUniforms();
+
+    void SyncShader(bool force_reload);
 
     void SyncBoolUniforms();
 

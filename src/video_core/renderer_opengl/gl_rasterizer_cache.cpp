@@ -68,10 +68,10 @@ void RasterizerCacheOpenGL::LoadAndBindTexture(OpenGLState& state, unsigned text
     }
 }
 
-bool RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offset, const u32* shader_data, const u32* swizzle_data) {
+bool RasterizerCacheOpenGL::LoadAndBindShader(bool force_reload, OpenGLState& state, u32 main_offset, const u32* shader_data, const u32* swizzle_data) {
     std::string cache_key = std::to_string(main_offset) + std::string(reinterpret_cast<const char*>(shader_data), 1024) + std::string(reinterpret_cast<const char*>(swizzle_data), 1024);
 
-    if (cache_key == cur_shader_key) {
+    if (!force_reload && cache_key == cur_shader_key) {
         return false;
     }
 
@@ -86,10 +86,10 @@ bool RasterizerCacheOpenGL::LoadAndBindShader(OpenGLState& state, u32 main_offse
 
         new_shader->Create(PICAVertexShaderToGLSL(main_offset, shader_data, swizzle_data).c_str(), GLShaders::g_fragment_shader_hw);
         std::string shader_string = PICAVertexShaderToGLSL(main_offset, shader_data, swizzle_data);
-        //FILE *file = fopen("s.txt", "w");
+        //FILE *file = fopen("s.txt", "a");
         //fwrite(shader_string.c_str(), 1, shader_string.length(), file);
         //fclose(file);
-        LOG_CRITICAL(Render_OpenGL, "%s", shader_string.c_str());
+        //LOG_CRITICAL(Render_OpenGL, "%s", shader_string.c_str());
         state.draw.shader_program = new_shader->handle;
 
         vertex_shader_cache.emplace(cache_key, std::move(new_shader));

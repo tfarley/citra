@@ -33,9 +33,8 @@ RasterizerOpenGL::RasterizerOpenGL() : last_fb_color_addr(0), last_fb_depth_addr
 RasterizerOpenGL::~RasterizerOpenGL() { }
 
 void RasterizerOpenGL::InitObjects() {
-    // Create the hardware shader program and get attrib/uniform locations
+    // Create the hardware shader program
     shader.Create(GLShaders::g_vertex_shader_hw, GLShaders::g_fragment_shader_hw);
-    LocateUniforms(shader.handle);
 
     // Generate VBO and VAO
     vertex_buffer.Create();
@@ -44,21 +43,8 @@ void RasterizerOpenGL::InitObjects() {
     // Update OpenGL state
     state.draw.vertex_array = vertex_array.handle;
     state.draw.vertex_buffer = vertex_buffer.handle;
-    state.draw.shader_program = shader.handle;
 
     state.Apply();
-
-    // Set vertex attributes
-    glVertexAttribPointer(attrib_position, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, position));
-    glVertexAttribPointer(attrib_color, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, color));
-    glVertexAttribPointer(attrib_texcoords, 2, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, tex_coord0));
-    glVertexAttribPointer(attrib_texcoords + 1, 2, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, tex_coord1));
-    glVertexAttribPointer(attrib_texcoords + 2, 2, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, tex_coord2));
-    glEnableVertexAttribArray(attrib_position);
-    glEnableVertexAttribArray(attrib_color);
-    glEnableVertexAttribArray(attrib_texcoords);
-    glEnableVertexAttribArray(attrib_texcoords + 1);
-    glEnableVertexAttribArray(attrib_texcoords + 2);
 
     // Create textures for OGL framebuffer that will be rendered to, initially 1x1 to succeed in framebuffer creation
     fb_color_texture.texture.Create();
@@ -114,7 +100,7 @@ void RasterizerOpenGL::Reset() {
 
     res_cache.FullFlush();
 
-    SyncShader();
+    SyncShader(true);
     SyncCullMode();
     SyncBlendEnabled();
     SyncBlendFuncs();
@@ -141,23 +127,21 @@ void RasterizerOpenGL::AddTriangleRaw(const RawVertex& v0,
 }
 
 void RasterizerOpenGL::DrawTriangles() {
-    SyncShader();
+    SyncShader(false);
     SyncFramebuffer();
     SyncDrawState();
 
-    /*glBufferData(GL_ARRAY_BUFFER, vertex_batch.size() * sizeof(HardwareVertex), vertex_batch.data(), GL_STREAM_DRAW);
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertex_batch.size());
+    if (Settings::values.use_hw_vertex_shaders) {
+        glBufferData(GL_ARRAY_BUFFER, raw_vertex_batch.size() * sizeof(RawVertex), raw_vertex_batch.data(), GL_STREAM_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)raw_vertex_batch.size());
 
-    vertex_batch.clear();*/
+        raw_vertex_batch.clear();
+    } else {
+        glBufferData(GL_ARRAY_BUFFER, vertex_batch.size() * sizeof(HardwareVertex), vertex_batch.data(), GL_STREAM_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertex_batch.size());
 
-    //for (int i = 0; i < raw_vertex_batch.size(); ++i) {
-    //    LOG_CRITICAL(Render_OpenGL, "vert %f %f %f %f", raw_vertex_batch[i].attr[0][0], raw_vertex_batch[i].attr[0][1], raw_vertex_batch[i].attr[0][2], raw_vertex_batch[i].attr[0][3]);
-    //}
-
-    glBufferData(GL_ARRAY_BUFFER, raw_vertex_batch.size() * sizeof(RawVertex), raw_vertex_batch.data(), GL_STREAM_DRAW);
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)raw_vertex_batch.size());
-
-    raw_vertex_batch.clear();
+        vertex_batch.clear();
+    }
 
     // Flush the resource cache at the current depth and color framebuffer addresses for render-to-texture
     const auto& regs = Pica::g_state.regs;
@@ -187,31 +171,9 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
 
     switch(id) {
     // Vertex shader
-
-
-        // TODO: what needs to happen is a checksum on the shader or something
-        // then make the cache based on that checksum
-        //so it doesnt reload the shader every drawtriangle!
-        //and it shoudl only reload shader if entry point changes or this overwrites any part of the shader
-        // or instead of cksum, check if new value == old value
-
-    //case PICA_REG_INDEX(vs_program.offset):
-    //    res_cache.NotifyFlush(regs.vs_program.offset, 1);
-    //    break;
-
-    //case PICA_REG_INDEX(trigger_end_code_transfer):
-    //    LOG_CRITICAL(Render_OpenGL, "shader");
-    //   // SyncShader();
-    //    break;
-
-    //case PICA_REG_INDEX(vs_main_offset):
-    //    //LOG_CRITICAL(Render_OpenGL, "shader");
-    //    SyncShader();
-    //    break;
-
     case PICA_REG_INDEX(vs_bool_uniforms):
-        //LOG_CRITICAL(Render_OpenGL, "bbbbb");
-        SyncBoolUniforms();
+        if (Settings::values.use_hw_vertex_shaders)
+            SyncBoolUniforms();
         break;
 
     case PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[0], 0x2b1):
@@ -219,24 +181,25 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
     case PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[2], 0x2b3):
     case PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[3], 0x2b4):
     {
-        //LOG_CRITICAL(Render_OpenGL, "iiiii");
-        int index = (id - PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[0], 0x2b1));
-        SyncIntUniform(index);
+        if (Settings::values.use_hw_vertex_shaders) {
+            int index = (id - PICA_REG_INDEX_WORKAROUND(vs_int_uniforms[0], 0x2b1));
+            SyncIntUniform(index);
+        }
         break;
     }
 
     case PICA_REG_INDEX(vs_input_register_map.attribute0_register):
     {
-        SyncFirstInMap();
-        //LOG_CRITICAL(Render_OpenGL, "inregs1 %d %d %d %d %d %d %d %d", maps[0], maps[1], maps[2], maps[3], maps[4], maps[5], maps[6], maps[7]);
+        if (Settings::values.use_hw_vertex_shaders)
+            SyncFirstInMap();
         break;
     }
 
     // TODO: offset (+4) maybe wrong?
     case PICA_REG_INDEX(vs_input_register_map.attribute0_register)+1:
     {
-        SyncSecondInMap();
-        //LOG_CRITICAL(Render_OpenGL, "inregs2 %d %d %d %d %d %d %d %d", maps[0], maps[1], maps[2], maps[3], maps[4], maps[5], maps[6], maps[7]);
+        if (Settings::values.use_hw_vertex_shaders)
+            SyncSecondInMap();
         break;
     }
 
@@ -257,8 +220,10 @@ void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
     case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[14], 0x5F):
     case PICA_REG_INDEX_WORKAROUND(vs_output_attributes[15], 0x60):
     {
-        int index = (id - PICA_REG_INDEX_WORKAROUND(vs_output_attributes[0], 0x50));
-        SyncOutMap(index);
+        if (Settings::values.use_hw_vertex_shaders) {
+            int index = (id - PICA_REG_INDEX_WORKAROUND(vs_output_attributes[0], 0x50));
+            SyncOutMap(index);
+        }
         break;
     }
 
@@ -460,10 +425,6 @@ void RasterizerOpenGL::NotifyFlush(PAddr addr, u32 size) {
 }
 
 void RasterizerOpenGL::LocateUniforms(GLuint shader_handle) {
-    attrib_position = glGetAttribLocation(shader_handle, "vert_position");
-    attrib_color = glGetAttribLocation(shader_handle, "vert_color");
-    attrib_texcoords = glGetAttribLocation(shader_handle, "vert_texcoords");
-
     uniform_alphatest_enabled = glGetUniformLocation(shader_handle, "alphatest_enabled");
     uniform_alphatest_func = glGetUniformLocation(shader_handle, "alphatest_func");
     uniform_alphatest_ref = glGetUniformLocation(shader_handle, "alphatest_ref");
@@ -677,23 +638,17 @@ void RasterizerOpenGL::SyncFramebuffer() {
     }
 }
 
-void RasterizerOpenGL::SyncShader() {
+void RasterizerOpenGL::SyncShaderUniforms() {
     const auto& regs = Pica::g_state.regs;
-    if (res_cache.LoadAndBindShader(state, regs.vs_main_offset, Pica::g_state.vs.program_code.data(), Pica::g_state.vs.swizzle_data.data())) {
-        attrib_v = glGetAttribLocation(state.draw.shader_program, "v");
 
-        for (int i = 0; i < 16; i++) {
-            glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, sizeof(RawVertex), (GLvoid*)(i * 4 * sizeof(float)));
-            glEnableVertexAttribArray(attrib_v + i);
-        }
+    LocateUniforms(state.draw.shader_program);
 
-        LocateUniforms(state.draw.shader_program);
+    // Set the texture samplers to correspond to different texture units
+    glUniform1i(uniform_tex, 0);
+    glUniform1i(uniform_tex + 1, 1);
+    glUniform1i(uniform_tex + 2, 2);
 
-        // Set the texture samplers to correspond to different texture units
-        glUniform1i(uniform_tex, 0);
-        glUniform1i(uniform_tex + 1, 1);
-        glUniform1i(uniform_tex + 2, 2);
-
+    if (Settings::values.use_hw_vertex_shaders) {
         SyncBoolUniforms();
         for (unsigned i = 0; i < 4; ++i)
             SyncIntUniform(i);
@@ -705,53 +660,91 @@ void RasterizerOpenGL::SyncShader() {
 
         for (unsigned i = 0; i < 16; ++i)
             SyncOutMap(i);
+    }
 
-        SyncAlphaTest();
+    SyncAlphaTest();
 
-        // TEV stage 0
-        SyncTevSources(0, regs.tev_stage0);
-        SyncTevModifiers(0, regs.tev_stage0);
-        SyncTevOps(0, regs.tev_stage0);
-        SyncTevColor(0, regs.tev_stage0);
-        SyncTevMultipliers(0, regs.tev_stage0);
+    // TEV stage 0
+    SyncTevSources(0, regs.tev_stage0);
+    SyncTevModifiers(0, regs.tev_stage0);
+    SyncTevOps(0, regs.tev_stage0);
+    SyncTevColor(0, regs.tev_stage0);
+    SyncTevMultipliers(0, regs.tev_stage0);
 
-        // TEV stage 1
-        SyncTevSources(1, regs.tev_stage1);
-        SyncTevModifiers(1, regs.tev_stage1);
-        SyncTevOps(1, regs.tev_stage1);
-        SyncTevColor(1, regs.tev_stage1);
-        SyncTevMultipliers(1, regs.tev_stage1);
+    // TEV stage 1
+    SyncTevSources(1, regs.tev_stage1);
+    SyncTevModifiers(1, regs.tev_stage1);
+    SyncTevOps(1, regs.tev_stage1);
+    SyncTevColor(1, regs.tev_stage1);
+    SyncTevMultipliers(1, regs.tev_stage1);
 
-        // TEV stage 2
-        SyncTevSources(2, regs.tev_stage2);
-        SyncTevModifiers(2, regs.tev_stage2);
-        SyncTevOps(2, regs.tev_stage2);
-        SyncTevColor(2, regs.tev_stage2);
-        SyncTevMultipliers(2, regs.tev_stage2);
+    // TEV stage 2
+    SyncTevSources(2, regs.tev_stage2);
+    SyncTevModifiers(2, regs.tev_stage2);
+    SyncTevOps(2, regs.tev_stage2);
+    SyncTevColor(2, regs.tev_stage2);
+    SyncTevMultipliers(2, regs.tev_stage2);
 
-        // TEV stage 3
-        SyncTevSources(3, regs.tev_stage3);
-        SyncTevModifiers(3, regs.tev_stage3);
-        SyncTevOps(3, regs.tev_stage3);
-        SyncTevColor(3, regs.tev_stage3);
-        SyncTevMultipliers(3, regs.tev_stage3);
+    // TEV stage 3
+    SyncTevSources(3, regs.tev_stage3);
+    SyncTevModifiers(3, regs.tev_stage3);
+    SyncTevOps(3, regs.tev_stage3);
+    SyncTevColor(3, regs.tev_stage3);
+    SyncTevMultipliers(3, regs.tev_stage3);
 
-        // TEV stage 4
-        SyncTevSources(4, regs.tev_stage4);
-        SyncTevModifiers(4, regs.tev_stage4);
-        SyncTevOps(4, regs.tev_stage4);
-        SyncTevColor(4, regs.tev_stage4);
-        SyncTevMultipliers(4, regs.tev_stage4);
+    // TEV stage 4
+    SyncTevSources(4, regs.tev_stage4);
+    SyncTevModifiers(4, regs.tev_stage4);
+    SyncTevOps(4, regs.tev_stage4);
+    SyncTevColor(4, regs.tev_stage4);
+    SyncTevMultipliers(4, regs.tev_stage4);
 
-        // TEV stage 5
-        SyncTevSources(5, regs.tev_stage5);
-        SyncTevModifiers(5, regs.tev_stage5);
-        SyncTevOps(5, regs.tev_stage5);
-        SyncTevColor(5, regs.tev_stage5);
-        SyncTevMultipliers(5, regs.tev_stage5);
+    // TEV stage 5
+    SyncTevSources(5, regs.tev_stage5);
+    SyncTevModifiers(5, regs.tev_stage5);
+    SyncTevOps(5, regs.tev_stage5);
+    SyncTevColor(5, regs.tev_stage5);
+    SyncTevMultipliers(5, regs.tev_stage5);
 
-        SyncCombinerColor();
-        SyncCombinerWriteFlags();
+    SyncCombinerColor();
+    SyncCombinerWriteFlags();
+}
+
+void RasterizerOpenGL::SyncShader(bool force_reload) {
+    const auto& regs = Pica::g_state.regs;
+
+    if (Settings::values.use_hw_vertex_shaders) {
+        if (res_cache.LoadAndBindShader(force_reload || state.draw.shader_program == shader.handle, state, regs.vs_main_offset, Pica::g_state.vs.program_code.data(), Pica::g_state.vs.swizzle_data.data())) {
+            attrib_v = glGetAttribLocation(state.draw.shader_program, "v");
+
+            for (int i = 0; i < 16; i++) {
+                glVertexAttribPointer(attrib_v + i, 4, GL_FLOAT, GL_FALSE, sizeof(RawVertex), (GLvoid*)(i * 4 * sizeof(float)));
+                glEnableVertexAttribArray(attrib_v + i);
+            }
+
+            SyncShaderUniforms();
+        }
+    } else if (state.draw.shader_program != shader.handle) {
+        state.draw.shader_program = shader.handle;
+
+        state.Apply();
+
+        attrib_position = glGetAttribLocation(shader.handle, "vert_position");
+        attrib_color = glGetAttribLocation(shader.handle, "vert_color");
+        attrib_texcoords = glGetAttribLocation(shader.handle, "vert_texcoords");
+
+        glVertexAttribPointer(attrib_position, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, position));
+        glVertexAttribPointer(attrib_color, 4, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, color));
+        glVertexAttribPointer(attrib_texcoords, 2, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, tex_coord0));
+        glVertexAttribPointer(attrib_texcoords + 1, 2, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, tex_coord1));
+        glVertexAttribPointer(attrib_texcoords + 2, 2, GL_FLOAT, GL_FALSE, sizeof(HardwareVertex), (GLvoid*)offsetof(HardwareVertex, tex_coord2));
+        glEnableVertexAttribArray(attrib_position);
+        glEnableVertexAttribArray(attrib_color);
+        glEnableVertexAttribArray(attrib_texcoords);
+        glEnableVertexAttribArray(attrib_texcoords + 1);
+        glEnableVertexAttribArray(attrib_texcoords + 2);
+
+        SyncShaderUniforms();
     }
 }
 
