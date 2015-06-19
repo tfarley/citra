@@ -77,26 +77,33 @@ void RendererOpenGL::SwapBuffers() {
         LCD::Regs::ColorFill color_fill = {0};
         LCD::Read(color_fill.raw, lcd_color_addr);
 
-        if (color_fill.is_enabled) {
-            LoadColorToActiveGLTexture(color_fill.color_r, color_fill.color_g, color_fill.color_b, textures[i]);
+        if (Settings::values.use_high_res) {
+            const PAddr framebuffer_addr = framebuffer.active_fb == 0 ?
+                framebuffer.address_left1 : framebuffer.address_left2;
 
-            // Resize the texture in case the framebuffer size has changed
-            textures[i].width = 1;
-            textures[i].height = 1;
+            textures[i].handle = hw_rasterizer->GetFramebufferHandle(framebuffer_addr);
         } else {
-            if (textures[i].width != (GLsizei)framebuffer.width ||
-                textures[i].height != (GLsizei)framebuffer.height ||
-                textures[i].format != framebuffer.color_format) {
-                // Reallocate texture if the framebuffer size has changed.
-                // This is expected to not happen very often and hence should not be a
-                // performance problem.
-                ConfigureFramebufferTexture(textures[i], framebuffer);
-            }
-            LoadFBToActiveGLTexture(framebuffer, textures[i]);
+            if (color_fill.is_enabled) {
+                LoadColorToActiveGLTexture(color_fill.color_r, color_fill.color_g, color_fill.color_b, textures[i]);
 
-            // Resize the texture in case the framebuffer size has changed
-            textures[i].width = framebuffer.width;
-            textures[i].height = framebuffer.height;
+                // Resize the texture in case the framebuffer size has changed
+                textures[i].width = 1;
+                textures[i].height = 1;
+            } else {
+                if (textures[i].width != (GLsizei)framebuffer.width ||
+                    textures[i].height != (GLsizei)framebuffer.height ||
+                    textures[i].format != framebuffer.color_format) {
+                    // Reallocate texture if the framebuffer size has changed.
+                    // This is expected to not happen very often and hence should not be a
+                    // performance problem.
+                    ConfigureFramebufferTexture(textures[i], framebuffer);
+                }
+                LoadFBToActiveGLTexture(framebuffer, textures[i]);
+
+                // Resize the texture in case the framebuffer size has changed
+                textures[i].width = framebuffer.width;
+                textures[i].height = framebuffer.height;
+            }
         }
     }
 
@@ -131,6 +138,14 @@ void RendererOpenGL::SwapBuffers() {
     if (Settings::values.use_hw_vertex_shaders != hw_vertex_shaders_enabled) {
         // TODO: Save new setting value to config file for next startup
         Settings::values.use_hw_vertex_shaders = hw_vertex_shaders_enabled;
+
+        hw_rasterizer->Reset();
+    }
+
+    bool high_res_enabled = VideoCore::g_high_res_enabled;
+    if (Settings::values.use_high_res != high_res_enabled) {
+        // TODO: Save new setting value to config file for next startup
+        Settings::values.use_high_res = high_res_enabled;
 
         hw_rasterizer->Reset();
     }

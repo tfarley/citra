@@ -36,6 +36,7 @@ extern EmuWindow*      g_emu_window;            ///< Emu window
 // TODO: Wrap this in a user settings struct along with any other graphics settings (often set from qt ui)
 extern std::atomic<bool> g_hw_renderer_enabled;
 extern std::atomic<bool> g_hw_vertex_shaders_enabled;
+extern std::atomic<bool> g_high_res_enabled;
 
 /// Start the video core
 void Start();

@@ -131,6 +131,9 @@ GMainWindow::GMainWindow() : emu_thread(nullptr)
     ui.action_Use_Hardware_Vertex_Shaders->setChecked(Settings::values.use_hw_vertex_shaders);
     SetHardwareVertexShadersEnabled(ui.action_Use_Hardware_Vertex_Shaders->isChecked());
 
+    ui.action_Use_High_Resolution->setChecked(Settings::values.use_high_res);
+    SetHighResolutionEnabled(ui.action_Use_High_Resolution->isChecked());
+
     ui.action_Single_Window_Mode->setChecked(settings.value("singleWindowMode", true).toBool());
     ToggleWindowMode();
 
@@ -145,6 +148,7 @@ GMainWindow::GMainWindow() : emu_thread(nullptr)
     connect(ui.action_Stop, SIGNAL(triggered()), this, SLOT(OnStopGame()));
     connect(ui.action_Use_Hardware_Renderer, SIGNAL(triggered(bool)), this, SLOT(SetHardwareRendererEnabled(bool)));
     connect(ui.action_Use_Hardware_Vertex_Shaders, SIGNAL(triggered(bool)), this, SLOT(SetHardwareVertexShadersEnabled(bool)));
+    connect(ui.action_Use_High_Resolution, SIGNAL(triggered(bool)), this, SLOT(SetHighResolutionEnabled(bool)));
     connect(ui.action_Single_Window_Mode, SIGNAL(triggered(bool)), this, SLOT(ToggleWindowMode()));
     connect(ui.action_Hotkeys, SIGNAL(triggered()), this, SLOT(OnOpenHotkeysDialog()));
 
@@ -317,6 +321,10 @@ void GMainWindow::SetHardwareRendererEnabled(bool enabled) {
 
 void GMainWindow::SetHardwareVertexShadersEnabled(bool enabled) {
     VideoCore::g_hw_vertex_shaders_enabled = enabled;
+}
+
+void GMainWindow::SetHighResolutionEnabled(bool enabled) {
+    VideoCore::g_high_res_enabled = enabled;
 }
 
 void GMainWindow::ToggleWindowMode() {

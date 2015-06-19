@@ -71,6 +71,7 @@ private slots:
     void OnDisplayTitleBars(bool);
     void SetHardwareRendererEnabled(bool);
     void SetHardwareVertexShadersEnabled(bool);
+    void SetHighResolutionEnabled(bool);
     void ToggleWindowMode();
 
 private:

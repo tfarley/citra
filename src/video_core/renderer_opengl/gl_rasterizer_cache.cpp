@@ -100,6 +100,93 @@ bool RasterizerCacheOpenGL::LoadAndBindShader(bool force_reload, OpenGLState& st
     return true;
 }
 
+void RasterizerCacheOpenGL::LoadAndBindFramebufferTexture(OpenGLState& state, unsigned texture_unit, PAddr addr, bool is_depth) {
+
+    if (is_depth) {
+        const auto cached_texture = fb_depth_texture_cache.find(addr);
+
+        if (cached_texture != fb_depth_texture_cache.end()) {
+            state.texture_units[texture_unit].texture_2d = cached_texture->second->handle;
+            state.Apply();
+        }
+        else {
+            std::unique_ptr<OGLTexture> new_texture = Common::make_unique<OGLTexture>();
+
+            new_texture->Create();
+
+            fb_depth_texture_cache.emplace(addr, std::move(new_texture));
+            fb_depth_texture_info.emplace(addr, DepthTextureInfo());
+        }
+    } else {
+        const auto cached_texture = fb_color_texture_cache.find(addr);
+
+        if (cached_texture != fb_color_texture_cache.end()) {
+            state.texture_units[texture_unit].texture_2d = cached_texture->second->handle;
+            state.Apply();
+        }
+        else {
+            std::unique_ptr<OGLTexture> new_texture = Common::make_unique<OGLTexture>();
+
+            new_texture->Create();
+
+            fb_color_texture_cache.emplace(addr, std::move(new_texture));
+            fb_color_texture_info.emplace(addr, TextureInfo());
+        }
+    }
+    
+}
+
+GLuint RasterizerCacheOpenGL::GetFramebufferTextureHandle(PAddr addr, bool is_depth) {
+
+    if (is_depth) {
+        const auto cached_texture = fb_depth_texture_cache.find(addr);
+
+        if (cached_texture != fb_depth_texture_cache.end()) {
+            return cached_texture->second->handle;
+        } else {
+            const auto copy_map = fb_texture_copy_map.find(addr);
+            if (copy_map != fb_texture_copy_map.end()) {
+                const auto cached_texture = fb_depth_texture_cache.find(copy_map->second);
+
+                if (cached_texture != fb_depth_texture_cache.end()) {
+                    return cached_texture->second->handle;
+                }
+            }
+        }
+
+        return 0;
+    } else {
+        const auto cached_texture = fb_color_texture_cache.find(addr);
+
+        if (cached_texture != fb_color_texture_cache.end()) {
+            return cached_texture->second->handle;
+        } else {
+            const auto copy_map = fb_texture_copy_map.find(addr);
+            if (copy_map != fb_texture_copy_map.end()) {
+                const auto cached_texture = fb_color_texture_cache.find(copy_map->second);
+
+                if (cached_texture != fb_color_texture_cache.end()) {
+                    return cached_texture->second->handle;
+                }
+            }
+        }
+
+        return 0;
+    }
+}
+
+RasterizerCacheOpenGL::TextureInfo& RasterizerCacheOpenGL::GetFramebufferColorTextureInfo(PAddr addr) {
+    return fb_color_texture_info.find(addr)->second;
+}
+
+RasterizerCacheOpenGL::DepthTextureInfo& RasterizerCacheOpenGL::GetFramebufferDepthTextureInfo(PAddr addr) {
+    return fb_depth_texture_info.find(addr)->second;
+}
+
+void RasterizerCacheOpenGL::SetCopyMap(PAddr src_addr, PAddr dst_addr) {
+    fb_texture_copy_map[dst_addr] = src_addr;
+}
+
 void RasterizerCacheOpenGL::NotifyFlush(PAddr addr, u32 size) {
     // Flush any texture that falls in the flushed region
     // TODO: Optimize by also inserting upper bound (addr + size) of each texture into the same map and also narrow using lower_bound

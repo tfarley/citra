@@ -136,6 +136,8 @@ inline void Write(u32 addr, const T data) {
 
             VideoCore::g_renderer->hw_rasterizer->NotifyPreRead(config.GetPhysicalInputAddress(), input_size);
 
+            VideoCore::g_renderer->hw_rasterizer->SetCopyMap(config.GetPhysicalInputAddress(), config.GetPhysicalOutputAddress());
+
             if (config.raw_copy) {
                 // Raw copies do not perform color conversion nor tiled->linear / linear->tiled conversions
                 // TODO(Subv): Verify if raw copies perform scaling

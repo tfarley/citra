@@ -29,6 +29,24 @@ static bool IsPassThroughTevStage(const Pica::Regs::TevStageConfig& stage) {
             stage.GetAlphaMultiplier() == 1);
 }
 
+inline static u32 GetFramebufferScale() {
+    if (Settings::values.use_high_res)
+        return 2;
+
+    return 1;
+}
+
+static Math::Vec2<u32> GetModifiedFramebufferSize() {
+    const auto& regs = Pica::g_state.regs;
+
+    Math::Vec2<u32> fb_size(regs.framebuffer.GetWidth(), regs.framebuffer.GetHeight());
+
+    if (Settings::values.use_high_res)
+        fb_size *= GetFramebufferScale();
+
+    return fb_size;
+}
+
 RasterizerOpenGL::RasterizerOpenGL() : last_fb_color_addr(0), last_fb_depth_addr(0) { }
 RasterizerOpenGL::~RasterizerOpenGL() { }
 
@@ -46,53 +64,14 @@ void RasterizerOpenGL::InitObjects() {
 
     state.Apply();
 
-    // Create textures for OGL framebuffer that will be rendered to, initially 1x1 to succeed in framebuffer creation
-    fb_color_texture.texture.Create();
-    ReconfigureColorTexture(fb_color_texture, Pica::Regs::ColorFormat::RGBA8, 1, 1);
-
-    state.texture_units[0].enabled_2d = true;
-    state.texture_units[0].texture_2d = fb_color_texture.texture.handle;
-    state.Apply();
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    state.texture_units[0].texture_2d = 0;
-    state.Apply();
-
-    fb_depth_texture.texture.Create();
-    ReconfigureDepthTexture(fb_depth_texture, Pica::Regs::DepthFormat::D16, 1, 1);
-
-    state.texture_units[0].enabled_2d = true;
-    state.texture_units[0].texture_2d = fb_depth_texture.texture.handle;
-    state.Apply();
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-
-    state.texture_units[0].texture_2d = 0;
-    state.Apply();
-
     // Configure OpenGL framebuffer
     framebuffer.Create();
 
     state.draw.framebuffer = framebuffer.handle;
     state.Apply();
 
-    glActiveTexture(GL_TEXTURE0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb_color_texture.texture.handle, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.texture.handle, 0);
-
-    ASSERT_MSG(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE,
-               "OpenGL rasterizer framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    //ASSERT_MSG(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE,
+    //           "OpenGL rasterizer framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
 }
 
 void RasterizerOpenGL::Reset() {
@@ -461,7 +440,7 @@ void RasterizerOpenGL::LocateUniforms(GLuint shader_handle) {
         uniform_i[i] = glGetUniformLocation(shader_handle, ("i[" + std::to_string(i) + "]").c_str());
 }
 
-void RasterizerOpenGL::ReconfigureColorTexture(TextureInfo& texture, Pica::Regs::ColorFormat format, u32 width, u32 height) {
+void RasterizerOpenGL::ReconfigureColorTexture(PAddr addr, RasterizerCacheOpenGL::TextureInfo& texture, Pica::Regs::ColorFormat format, u32 width, u32 height) {
     GLint internal_format;
 
     texture.format = format;
@@ -509,11 +488,14 @@ void RasterizerOpenGL::ReconfigureColorTexture(TextureInfo& texture, Pica::Regs:
         break;
     }
 
-    state.texture_units[0].enabled_2d = true;
-    state.texture_units[0].texture_2d = texture.texture.handle;
-    state.Apply();
+    res_cache.LoadAndBindFramebufferTexture(state, 0, addr, false);
 
     glActiveTexture(GL_TEXTURE0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
                  texture.gl_format, texture.gl_type, nullptr);
 
@@ -521,7 +503,7 @@ void RasterizerOpenGL::ReconfigureColorTexture(TextureInfo& texture, Pica::Regs:
     state.Apply();
 }
 
-void RasterizerOpenGL::ReconfigureDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height) {
+void RasterizerOpenGL::ReconfigureDepthTexture(PAddr addr, RasterizerCacheOpenGL::DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height) {
     GLint internal_format;
 
     texture.format = format;
@@ -553,11 +535,16 @@ void RasterizerOpenGL::ReconfigureDepthTexture(DepthTextureInfo& texture, Pica::
         break;
     }
 
-    state.texture_units[0].enabled_2d = true;
-    state.texture_units[0].texture_2d = texture.texture.handle;
-    state.Apply();
+    res_cache.LoadAndBindFramebufferTexture(state, 0, addr, true);
 
     glActiveTexture(GL_TEXTURE0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
                  texture.gl_format, texture.gl_type, nullptr);
 
@@ -574,13 +561,18 @@ void RasterizerOpenGL::SyncFramebuffer() {
     PAddr cur_fb_depth_addr = regs.framebuffer.GetDepthBufferPhysicalAddress();
     Pica::Regs::DepthFormat new_fb_depth_format = regs.framebuffer.depth_format;
 
-    bool fb_size_changed = fb_color_texture.width != regs.framebuffer.GetWidth() ||
-                           fb_color_texture.height != regs.framebuffer.GetHeight();
+    Math::Vec2<u32> fb_size = GetModifiedFramebufferSize();
 
-    bool color_fb_prop_changed = fb_color_texture.format != new_fb_color_format ||
+    RasterizerCacheOpenGL::TextureInfo& color_texture_info = res_cache.GetFramebufferColorTextureInfo(cur_fb_color_addr);
+    RasterizerCacheOpenGL::DepthTextureInfo& depth_texture_info = res_cache.GetFramebufferDepthTextureInfo(cur_fb_depth_addr);
+
+    bool fb_size_changed = color_texture_info.width != fb_size.x ||
+                           color_texture_info.height != fb_size.y;
+
+    bool color_fb_prop_changed = color_texture_info.format != new_fb_color_format ||
                                  fb_size_changed;
 
-    bool depth_fb_prop_changed = fb_depth_texture.format != new_fb_depth_format ||
+    bool depth_fb_prop_changed = depth_texture_info.format != new_fb_depth_format ||
                                  fb_size_changed;
 
     bool color_fb_modified = last_fb_color_addr != cur_fb_color_addr ||
@@ -598,14 +590,14 @@ void RasterizerOpenGL::SyncFramebuffer() {
 
     // Reconfigure framebuffer textures if any property has changed
     if (color_fb_prop_changed) {
-        ReconfigureColorTexture(fb_color_texture, new_fb_color_format,
-                                regs.framebuffer.GetWidth(), regs.framebuffer.GetHeight());
+        ReconfigureColorTexture(cur_fb_color_addr, color_texture_info, new_fb_color_format,
+                                fb_size.x, fb_size.y);
     }
 
     if (depth_fb_prop_changed) {
-        ReconfigureDepthTexture(fb_depth_texture, new_fb_depth_format,
-                                regs.framebuffer.GetWidth(), regs.framebuffer.GetHeight());
-
+        ReconfigureDepthTexture(cur_fb_depth_addr, depth_texture_info, new_fb_depth_format,
+                                fb_size.x, fb_size.y);
+    }
         // Only attach depth buffer as stencil if it supports stencil
         switch (new_fb_depth_format) {
         case Pica::Regs::DepthFormat::D16:
@@ -614,7 +606,7 @@ void RasterizerOpenGL::SyncFramebuffer() {
             break;
 
         case Pica::Regs::DepthFormat::D24S8:
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.texture.handle, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, res_cache.GetFramebufferTextureHandle(cur_fb_depth_addr, true), 0);
             break;
 
         default:
@@ -622,7 +614,12 @@ void RasterizerOpenGL::SyncFramebuffer() {
             UNIMPLEMENTED();
             break;
         }
-    }
+    //}
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, res_cache.GetFramebufferTextureHandle(cur_fb_color_addr, false), 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, res_cache.GetFramebufferTextureHandle(cur_fb_depth_addr, true), 0);
+
+    
 
     // Load buffer data again if fb modified in any way
     if (color_fb_modified) {
@@ -951,10 +948,10 @@ void RasterizerOpenGL::SyncDrawState() {
     // OpenGL uses different y coordinates, so negate corner offset and flip origin
     // TODO: Ensure viewport_corner.x should not be negated or origin flipped
     // TODO: Use floating-point viewports for accuracy if supported
-    glViewport((GLsizei)static_cast<float>(regs.viewport_corner.x),
-                -(GLsizei)static_cast<float>(regs.viewport_corner.y)
-                    + regs.framebuffer.GetHeight() - viewport_height,
-                viewport_width, viewport_height);
+    glViewport((GLsizei)static_cast<float>(regs.viewport_corner.x) * GetFramebufferScale(),
+               (-(GLsizei)static_cast<float>(regs.viewport_corner.y)
+                   + regs.framebuffer.GetHeight() - viewport_height) * GetFramebufferScale(),
+               viewport_width * GetFramebufferScale(), viewport_height * GetFramebufferScale());
 
     // Sync bound texture(s), upload if not cached
     const auto pica_textures = regs.GetTextures();
@@ -981,41 +978,63 @@ void RasterizerOpenGL::SyncDrawState() {
     state.Apply();
 }
 
+u32 RasterizerOpenGL::GetFramebufferHandle(PAddr addr) {
+    return res_cache.GetFramebufferTextureHandle(addr, false);
+}
+
+void RasterizerOpenGL::SetCopyMap(PAddr src_addr, PAddr dst_addr) {
+    res_cache.SetCopyMap(src_addr, dst_addr);
+}
+
 void RasterizerOpenGL::ReloadColorBuffer() {
+    // TODO: HACK: Reload texture data needs to be upscaled before being uploaded to texture!
+    if (Settings::values.use_high_res) {
+        //glClear(GL_COLOR_BUFFER_BIT);
+        return;
+    }
+
     u8* color_buffer = Memory::GetPhysicalPointer(Pica::g_state.regs.framebuffer.GetColorBufferPhysicalAddress());
 
     if (color_buffer == nullptr)
         return;
 
-    u32 bytes_per_pixel = Pica::Regs::BytesPerColorPixel(fb_color_texture.format);
+    const auto& regs = Pica::g_state.regs;
+    PAddr cur_fb_color_addr = regs.framebuffer.GetColorBufferPhysicalAddress();
+    RasterizerCacheOpenGL::TextureInfo& color_texture_info = res_cache.GetFramebufferColorTextureInfo(cur_fb_color_addr);
 
-    std::unique_ptr<u8[]> temp_fb_color_buffer(new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel]);
+    u32 bytes_per_pixel = Pica::Regs::BytesPerColorPixel(color_texture_info.format);
+
+    std::unique_ptr<u8[]> temp_fb_color_buffer(new u8[color_texture_info.width * color_texture_info.height * bytes_per_pixel]);
 
     // Directly copy pixels. Internal OpenGL color formats are consistent so no conversion is necessary.
-    for (int y = 0; y < fb_color_texture.height; ++y) {
-        for (int x = 0; x < fb_color_texture.width; ++x) {
+    for (int y = 0; y < color_texture_info.height; ++y) {
+        for (int x = 0; x < color_texture_info.width; ++x) {
             const u32 coarse_y = y & ~7;
-            u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_color_texture.width * bytes_per_pixel;
-            u32 gl_pixel_index = (x + y * fb_color_texture.width) * bytes_per_pixel;
+            u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * color_texture_info.width * bytes_per_pixel;
+            u32 gl_pixel_index = (x + y * color_texture_info.width) * bytes_per_pixel;
 
             u8* pixel = color_buffer + dst_offset;
             memcpy(&temp_fb_color_buffer[gl_pixel_index], pixel, bytes_per_pixel);
         }
     }
 
-    state.texture_units[0].enabled_2d = true;
-    state.texture_units[0].texture_2d = fb_color_texture.texture.handle;
-    state.Apply();
+    res_cache.LoadAndBindFramebufferTexture(state, 0, cur_fb_color_addr, false);
 
     glActiveTexture(GL_TEXTURE0);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_color_texture.width, fb_color_texture.height,
-                    fb_color_texture.gl_format, fb_color_texture.gl_type, temp_fb_color_buffer.get());
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, color_texture_info.width, color_texture_info.height,
+                    color_texture_info.gl_format, color_texture_info.gl_type, temp_fb_color_buffer.get());
 
     state.texture_units[0].texture_2d = 0;
     state.Apply();
 }
 
 void RasterizerOpenGL::ReloadDepthBuffer() {
+    // TODO: HACK: Reload texture data needs to be upscaled before being uploaded to texture!
+    if (Settings::values.use_high_res) {
+        //glClear(GL_DEPTH_BUFFER_BIT);
+        return;
+    }
+
     // TODO: Appears to work, but double-check endianness of depth values and order of depth-stencil
     u8* depth_buffer = Memory::GetPhysicalPointer(Pica::g_state.regs.framebuffer.GetDepthBufferPhysicalAddress());
 
@@ -1023,21 +1042,25 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
         return;
     }
 
-    u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(fb_depth_texture.format);
+    const auto& regs = Pica::g_state.regs;
+    PAddr cur_fb_depth_addr = regs.framebuffer.GetDepthBufferPhysicalAddress();
+    RasterizerCacheOpenGL::DepthTextureInfo& depth_texture_info = res_cache.GetFramebufferDepthTextureInfo(cur_fb_depth_addr);
+
+    u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(depth_texture_info.format);
 
     // OpenGL needs 4 bpp alignment for D24
     u32 gl_bpp = bytes_per_pixel == 3 ? 4 : bytes_per_pixel;
 
-    std::unique_ptr<u8[]> temp_fb_depth_buffer(new u8[fb_depth_texture.width * fb_depth_texture.height * gl_bpp]);
+    std::unique_ptr<u8[]> temp_fb_depth_buffer(new u8[depth_texture_info.width * depth_texture_info.height * gl_bpp]);
 
     u8* temp_fb_depth_data = bytes_per_pixel == 3 ? (temp_fb_depth_buffer.get() + 1) : temp_fb_depth_buffer.get();
 
-    if (fb_depth_texture.format == Pica::Regs::DepthFormat::D24S8) {
-        for (int y = 0; y < fb_depth_texture.height; ++y) {
-            for (int x = 0; x < fb_depth_texture.width; ++x) {
+    if (depth_texture_info.format == Pica::Regs::DepthFormat::D24S8) {
+        for (int y = 0; y < depth_texture_info.height; ++y) {
+            for (int x = 0; x < depth_texture_info.width; ++x) {
                 const u32 coarse_y = y & ~7;
-                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_depth_texture.width * bytes_per_pixel;
-                u32 gl_pixel_index = (x + y * fb_depth_texture.width);
+                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * depth_texture_info.width * bytes_per_pixel;
+                u32 gl_pixel_index = (x + y * depth_texture_info.width);
 
                 u8* pixel = depth_buffer + dst_offset;
                 u32 depth_stencil = *(u32*)pixel;
@@ -1045,11 +1068,11 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
             }
         }
     } else {
-        for (int y = 0; y < fb_depth_texture.height; ++y) {
-            for (int x = 0; x < fb_depth_texture.width; ++x) {
+        for (int y = 0; y < depth_texture_info.height; ++y) {
+            for (int x = 0; x < depth_texture_info.width; ++x) {
                 const u32 coarse_y = y & ~7;
-                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_depth_texture.width * bytes_per_pixel;
-                u32 gl_pixel_index = (x + y * fb_depth_texture.width) * gl_bpp;
+                u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * depth_texture_info.width * bytes_per_pixel;
+                u32 gl_pixel_index = (x + y * depth_texture_info.width) * gl_bpp;
 
                 u8* pixel = depth_buffer + dst_offset;
                 memcpy(&temp_fb_depth_data[gl_pixel_index], pixel, bytes_per_pixel);
@@ -1057,43 +1080,48 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
         }
     }
 
-    state.texture_units[0].enabled_2d = true;
-    state.texture_units[0].texture_2d = fb_depth_texture.texture.handle;
-    state.Apply();
+    res_cache.LoadAndBindFramebufferTexture(state, 0, cur_fb_depth_addr, true);
 
     glActiveTexture(GL_TEXTURE0);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_depth_texture.width, fb_depth_texture.height,
-                    fb_depth_texture.gl_format, fb_depth_texture.gl_type, temp_fb_depth_buffer.get());
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, depth_texture_info.width, depth_texture_info.height,
+                    depth_texture_info.gl_format, depth_texture_info.gl_type, temp_fb_depth_buffer.get());
 
     state.texture_units[0].texture_2d = 0;
     state.Apply();
 }
 
 void RasterizerOpenGL::CommitColorBuffer() {
+    if (Settings::values.use_high_res) {
+        return;
+    }
+
     if (last_fb_color_addr != 0) {
         u8* color_buffer = Memory::GetPhysicalPointer(last_fb_color_addr);
 
         if (color_buffer != nullptr) {
-            u32 bytes_per_pixel = Pica::Regs::BytesPerColorPixel(fb_color_texture.format);
+            RasterizerCacheOpenGL::TextureInfo& color_texture_info = res_cache.GetFramebufferColorTextureInfo(last_fb_color_addr);
 
-            std::unique_ptr<u8[]> temp_gl_color_buffer(new u8[fb_color_texture.width * fb_color_texture.height * bytes_per_pixel]);
+            u32 bytes_per_pixel = Pica::Regs::BytesPerColorPixel(color_texture_info.format);
 
-            state.texture_units[0].enabled_2d = true;
-            state.texture_units[0].texture_2d = fb_color_texture.texture.handle;
-            state.Apply();
+            std::unique_ptr<u8[]> temp_gl_color_buffer(new u8[color_texture_info.width * color_texture_info.height * bytes_per_pixel]);
+
+            res_cache.LoadAndBindFramebufferTexture(state, 0, last_fb_color_addr, false);
 
             glActiveTexture(GL_TEXTURE0);
-            glGetTexImage(GL_TEXTURE_2D, 0, fb_color_texture.gl_format, fb_color_texture.gl_type, temp_gl_color_buffer.get());
+            glGetTexImage(GL_TEXTURE_2D, 0, color_texture_info.gl_format, color_texture_info.gl_type, temp_gl_color_buffer.get());
 
             state.texture_units[0].texture_2d = 0;
             state.Apply();
 
             // Directly copy pixels. Internal OpenGL color formats are consistent so no conversion is necessary.
-            for (int y = 0; y < fb_color_texture.height; ++y) {
-                for (int x = 0; x < fb_color_texture.width; ++x) {
+            u32 scale = GetFramebufferScale();
+            int scaled_width = color_texture_info.width / scale;
+            int scaled_height = color_texture_info.height / scale;
+            for (int y = 0; y < scaled_height; ++y) {
+                for (int x = 0; x < scaled_width; ++x) {
                     const u32 coarse_y = y & ~7;
-                    u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_color_texture.width * bytes_per_pixel;
-                    u32 gl_pixel_index = x * bytes_per_pixel + y * fb_color_texture.width * bytes_per_pixel;
+                    u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * scaled_width * bytes_per_pixel;
+                    u32 gl_pixel_index = (x + y * color_texture_info.width) * bytes_per_pixel * scale;
 
                     u8* pixel = color_buffer + dst_offset;
                     memcpy(pixel, &temp_gl_color_buffer[gl_pixel_index], bytes_per_pixel);
@@ -1104,36 +1132,44 @@ void RasterizerOpenGL::CommitColorBuffer() {
 }
 
 void RasterizerOpenGL::CommitDepthBuffer() {
+    if (Settings::values.use_high_res) {
+        return;
+    }
+
     if (last_fb_depth_addr != 0) {
         // TODO: Output seems correct visually, but doesn't quite match sw renderer output. One of them is wrong.
         u8* depth_buffer = Memory::GetPhysicalPointer(last_fb_depth_addr);
 
         if (depth_buffer != nullptr) {
-            u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(fb_depth_texture.format);
+            RasterizerCacheOpenGL::DepthTextureInfo& depth_texture_info = res_cache.GetFramebufferDepthTextureInfo(last_fb_depth_addr);
+
+            u32 bytes_per_pixel = Pica::Regs::BytesPerDepthPixel(depth_texture_info.format);
 
             // OpenGL needs 4 bpp alignment for D24
             u32 gl_bpp = bytes_per_pixel == 3 ? 4 : bytes_per_pixel;
 
-            std::unique_ptr<u8[]> temp_gl_depth_buffer(new u8[fb_depth_texture.width * fb_depth_texture.height * gl_bpp]);
+            std::unique_ptr<u8[]> temp_gl_depth_buffer(new u8[depth_texture_info.width * depth_texture_info.height * gl_bpp]);
 
-            state.texture_units[0].enabled_2d = true;
-            state.texture_units[0].texture_2d = fb_depth_texture.texture.handle;
-            state.Apply();
+            res_cache.LoadAndBindFramebufferTexture(state, 0, last_fb_depth_addr, true);
 
             glActiveTexture(GL_TEXTURE0);
-            glGetTexImage(GL_TEXTURE_2D, 0, fb_depth_texture.gl_format, fb_depth_texture.gl_type, temp_gl_depth_buffer.get());
+            glGetTexImage(GL_TEXTURE_2D, 0, depth_texture_info.gl_format, depth_texture_info.gl_type, temp_gl_depth_buffer.get());
 
             state.texture_units[0].texture_2d = 0;
             state.Apply();
 
             u8* temp_gl_depth_data = bytes_per_pixel == 3 ? (temp_gl_depth_buffer.get() + 1) : temp_gl_depth_buffer.get();
 
-            if (fb_depth_texture.format == Pica::Regs::DepthFormat::D24S8) {
-                for (int y = 0; y < fb_depth_texture.height; ++y) {
-                    for (int x = 0; x < fb_depth_texture.width; ++x) {
+            u32 scale = GetFramebufferScale();
+            int scaled_width = depth_texture_info.width / scale;
+            int scaled_height = depth_texture_info.height / scale;
+
+            if (depth_texture_info.format == Pica::Regs::DepthFormat::D24S8) {
+                for (int y = 0; y < scaled_height; ++y) {
+                    for (int x = 0; x < scaled_width; ++x) {
                         const u32 coarse_y = y & ~7;
-                        u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_depth_texture.width * bytes_per_pixel;
-                        u32 gl_pixel_index = (x + y * fb_depth_texture.width);
+                        u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * scaled_width * bytes_per_pixel;
+                        u32 gl_pixel_index = (x + y * depth_texture_info.width) * scale;
 
                         u8* pixel = depth_buffer + dst_offset;
                         u32 depth_stencil = ((u32*)temp_gl_depth_data)[gl_pixel_index];
@@ -1141,11 +1177,11 @@ void RasterizerOpenGL::CommitDepthBuffer() {
                     }
                 }
             } else {
-                for (int y = 0; y < fb_depth_texture.height; ++y) {
-                    for (int x = 0; x < fb_depth_texture.width; ++x) {
+                for (int y = 0; y < scaled_height; ++y) {
+                    for (int x = 0; x < scaled_width; ++x) {
                         const u32 coarse_y = y & ~7;
-                        u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * fb_depth_texture.width * bytes_per_pixel;
-                        u32 gl_pixel_index = (x + y * fb_depth_texture.width) * gl_bpp;
+                        u32 dst_offset = VideoCore::GetMortonOffset(x, y, bytes_per_pixel) + coarse_y * scaled_width * bytes_per_pixel;
+                        u32 gl_pixel_index = (x + y * depth_texture_info.width) * gl_bpp * scale;
 
                         u8* pixel = depth_buffer + dst_offset;
                         memcpy(pixel, &temp_gl_depth_data[gl_pixel_index], bytes_per_pixel);

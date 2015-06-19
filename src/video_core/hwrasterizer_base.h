@@ -49,4 +49,7 @@ public:
 
     /// Notify rasterizer that a 3DS memory region has been changed
     virtual void NotifyFlush(PAddr addr, u32 size) = 0;
+
+    virtual u32 GetFramebufferHandle(PAddr addr) = 0;
+    virtual void SetCopyMap(PAddr src_addr, PAddr dst_addr) = 0;
 };

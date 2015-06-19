@@ -24,6 +24,7 @@ RendererBase*   g_renderer      = nullptr;     ///< Renderer plugin
 
 std::atomic<bool> g_hw_renderer_enabled;
 std::atomic<bool> g_hw_vertex_shaders_enabled;
+std::atomic<bool> g_high_res_enabled;
 
 /// Initialize the video core
 void Init(EmuWindow* emu_window) {

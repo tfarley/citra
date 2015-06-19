@@ -47,6 +47,10 @@ public:
     /// Notify rasterizer that a 3DS memory region has been changed
     void NotifyFlush(PAddr addr, u32 size) override;
 
+    u32 GetFramebufferHandle(PAddr addr) override;
+
+    void SetCopyMap(PAddr src_addr, PAddr dst_addr) override;
+
 private:
     /// Structure used for managing texture environment states
     struct TEVConfigUniforms {
@@ -59,26 +63,6 @@ private:
         GLuint color_alpha_multiplier;
         GLuint const_color;
         GLuint updates_combiner_buffer_color_alpha;
-    };
-
-    /// Structure used for storing information about color textures
-    struct TextureInfo {
-        OGLTexture texture;
-        GLsizei width;
-        GLsizei height;
-        Pica::Regs::ColorFormat format;
-        GLenum gl_format;
-        GLenum gl_type;
-    };
-
-    /// Structure used for storing information about depth textures
-    struct DepthTextureInfo {
-        OGLTexture texture;
-        GLsizei width;
-        GLsizei height;
-        Pica::Regs::DepthFormat format;
-        GLenum gl_format;
-        GLenum gl_type;
     };
 
     /// Structure that the hardware rendered vertices are composed of
@@ -110,10 +94,10 @@ private:
     void LocateUniforms(GLuint shader_handle);
 
     /// Reconfigure the OpenGL color texture to use the given format and dimensions
-    void ReconfigureColorTexture(TextureInfo& texture, Pica::Regs::ColorFormat format, u32 width, u32 height);
+    void ReconfigureColorTexture(PAddr addr, RasterizerCacheOpenGL::TextureInfo& texture, Pica::Regs::ColorFormat format, u32 width, u32 height);
 
     /// Reconfigure the OpenGL depth texture to use the given format and dimensions
-    void ReconfigureDepthTexture(DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height);
+    void ReconfigureDepthTexture(PAddr addr, RasterizerCacheOpenGL::DepthTextureInfo& texture, Pica::Regs::DepthFormat format, u32 width, u32 height);
 
     /// Syncs the state and contents of the OpenGL framebuffer to match the current PICA framebuffer
     void SyncFramebuffer();
@@ -211,8 +195,6 @@ private:
     PAddr last_fb_depth_addr;
 
     // Hardware rasterizer
-    TextureInfo fb_color_texture;
-    DepthTextureInfo fb_depth_texture;
     OGLShader shader;
     OGLVertexArray vertex_array;
     OGLBuffer vertex_buffer;
