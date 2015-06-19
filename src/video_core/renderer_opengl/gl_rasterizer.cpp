@@ -1092,6 +1092,8 @@ void RasterizerOpenGL::ReloadDepthBuffer() {
 
 void RasterizerOpenGL::CommitColorBuffer() {
     if (Settings::values.use_high_res) {
+        state.texture_units[0].texture_2d = 0;
+        state.Apply();
         return;
     }
 
@@ -1133,6 +1135,8 @@ void RasterizerOpenGL::CommitColorBuffer() {
 
 void RasterizerOpenGL::CommitDepthBuffer() {
     if (Settings::values.use_high_res) {
+        state.texture_units[0].texture_2d = 0;
+        state.Apply();
         return;
     }
 
