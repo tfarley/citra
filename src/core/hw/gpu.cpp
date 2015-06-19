@@ -72,6 +72,14 @@ inline void Write(u32 addr, const T data) {
     case GPU_REG_INDEX_WORKAROUND(memory_fill_config[0].trigger, 0x00004 + 0x3):
     case GPU_REG_INDEX_WORKAROUND(memory_fill_config[1].trigger, 0x00008 + 0x3):
     {
+        if (index == GPU_REG_INDEX(memory_fill_config[0].trigger)) {
+            GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PSC0);
+        }
+        else {
+            GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PSC1);
+        }
+        break;
+
         const bool is_second_filler = (index != GPU_REG_INDEX(memory_fill_config[0].trigger));
         auto& config = g_regs.memory_fill_config[is_second_filler];
 
@@ -114,6 +122,10 @@ inline void Write(u32 addr, const T data) {
 
     case GPU_REG_INDEX(display_transfer_config.trigger):
     {
+        VideoCore::g_renderer->hw_rasterizer->SetCopyMap(g_regs.display_transfer_config.GetPhysicalInputAddress(), g_regs.display_transfer_config.GetPhysicalOutputAddress());
+        GSP_GPU::SignalInterrupt(GSP_GPU::InterruptId::PPF);
+        break;
+
         const auto& config = g_regs.display_transfer_config;
         if (config.trigger & 1) {
             u8* src_pointer = Memory::GetPhysicalPointer(config.GetPhysicalInputAddress());
