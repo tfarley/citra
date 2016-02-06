@@ -36,6 +36,29 @@ static bool IsPassThroughTevStage(const Pica::Regs::TevStageConfig& stage) {
             stage.GetAlphaMultiplier() == 1);
 }
 
+static void CheckFramebuffer() {
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        const char* status_str;
+
+#define SSTR(t) case GL_FRAMEBUFFER_##t: { status_str = #t; break; }
+        switch (status) {
+            SSTR(INCOMPLETE_ATTACHMENT);
+            SSTR(INCOMPLETE_DIMENSIONS);
+            SSTR(INCOMPLETE_MISSING_ATTACHMENT);
+            SSTR(UNSUPPORTED);
+        default:
+            status_str = "";
+            UNREACHABLE();
+        }
+#undef SSTR
+
+        LOG_CRITICAL(Render_OpenGL, "OpenGL framebuffer incomplete: GL_FRAMEBUFFER_%s", status_str);
+    }
+    LOG_CRITICAL(Render_OpenGL, "Opefdfhg");
+}
+
 RasterizerOpenGL::RasterizerOpenGL() : cached_fb_color_addr(0), cached_fb_depth_addr(0) { }
 RasterizerOpenGL::~RasterizerOpenGL() { }
 
@@ -125,6 +148,7 @@ void RasterizerOpenGL::InitObjects() {
     glActiveTexture(GL_TEXTURE0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fb_color_texture.texture.handle, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.texture.handle, 0);
+    CheckFramebuffer();
 
     for (size_t i = 0; i < lighting_lut.size(); ++i) {
         lighting_lut[i].Create();
@@ -138,9 +162,6 @@ void RasterizerOpenGL::InitObjects() {
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
     state.Apply();
-
-    ASSERT_MSG(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE,
-               "OpenGL rasterizer framebuffer setup failed, status %X", glCheckFramebufferStatus(GL_FRAMEBUFFER));
 }
 
 void RasterizerOpenGL::Reset() {
@@ -748,7 +769,9 @@ void RasterizerOpenGL::SyncFramebuffer() {
     bool color_fb_prop_changed = fb_color_texture.format != new_fb_color_format ||
                                  fb_size_changed;
 
-    bool depth_fb_prop_changed = fb_depth_texture.format != new_fb_depth_format ||
+    bool depth_fb_format_changed = fb_depth_texture.format != new_fb_depth_format;
+
+    bool depth_fb_prop_changed = depth_fb_format_changed ||
                                  fb_size_changed;
 
     bool color_fb_modified = cached_fb_color_addr != new_fb_color_addr ||
@@ -774,21 +797,25 @@ void RasterizerOpenGL::SyncFramebuffer() {
         ReconfigureDepthTexture(fb_depth_texture, new_fb_depth_format,
                                 regs.framebuffer.GetWidth(), regs.framebuffer.GetHeight());
 
-        // Only attach depth buffer as stencil if it supports stencil
-        switch (new_fb_depth_format) {
-        case Pica::Regs::DepthFormat::D16:
-        case Pica::Regs::DepthFormat::D24:
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
-            break;
+        if (depth_fb_format_changed) {
+            // Only attach depth buffer as stencil if it supports stencil
+            switch (new_fb_depth_format) {
+            case Pica::Regs::DepthFormat::D16:
+            case Pica::Regs::DepthFormat::D24:
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+                break;
 
-        case Pica::Regs::DepthFormat::D24S8:
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.texture.handle, 0);
-            break;
+            case Pica::Regs::DepthFormat::D24S8:
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, fb_depth_texture.texture.handle, 0);
+                break;
 
-        default:
-            LOG_CRITICAL(Render_OpenGL, "Unknown framebuffer depth format %x", new_fb_depth_format);
-            UNIMPLEMENTED();
-            break;
+            default:
+                LOG_CRITICAL(Render_OpenGL, "Unknown framebuffer depth format %x", new_fb_depth_format);
+                UNIMPLEMENTED();
+                break;
+            }
+
+            CheckFramebuffer();
         }
     }
 
