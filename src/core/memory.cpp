@@ -15,6 +15,9 @@
 #include "core/memory_setup.h"
 #include "core/mmio.h"
 
+#include "video_core/renderer_base.h"
+#include "video_core/video_core.h"
+
 namespace Memory {
 
 enum class PageType {
@@ -57,6 +60,12 @@ struct PageTable {
      * the corresponding entry in `pointers` MUST be set to null.
      */
     std::array<PageType, NUM_ENTRIES> attributes;
+
+    /**
+     * Indicates the number of externally cached resources touching a page that should be
+     * flushed before the memory is accessed
+     */
+    std::array<int, NUM_ENTRIES> cached_res_count;
 };
 
 /// Singular page table used for the singleton process
@@ -74,6 +83,7 @@ static void MapPages(u32 base, u32 size, u8* memory, PageType type) {
 
         current_page_table->attributes[base] = type;
         current_page_table->pointers[base] = memory;
+        current_page_table->cached_res_count[base] = 0;
 
         base += 1;
         if (memory != nullptr)
@@ -84,6 +94,7 @@ static void MapPages(u32 base, u32 size, u8* memory, PageType type) {
 void InitMemoryMap() {
     main_page_table.pointers.fill(nullptr);
     main_page_table.attributes.fill(PageType::Unmapped);
+    main_page_table.cached_res_count.fill(0);
 }
 
 void MapMemoryRegion(VAddr base, u32 size, u8* target) {
@@ -126,6 +137,9 @@ template <typename T>
 T Read(const VAddr vaddr) {
     const u8* page_pointer = current_page_table->pointers[vaddr >> PAGE_BITS];
     if (page_pointer) {
+        if (current_page_table->cached_res_count[vaddr >> PAGE_BITS] > 0)
+            FlushRegion(VirtualToPhysicalAddress(vaddr), sizeof(T), false);
+
         T value;
         std::memcpy(&value, &page_pointer[vaddr & PAGE_MASK], sizeof(T));
         return value;
@@ -153,6 +167,9 @@ template <typename T>
 void Write(const VAddr vaddr, const T data) {
     u8* page_pointer = current_page_table->pointers[vaddr >> PAGE_BITS];
     if (page_pointer) {
+        if (current_page_table->cached_res_count[vaddr >> PAGE_BITS] > 0)
+            FlushRegion(VirtualToPhysicalAddress(vaddr), sizeof(T), true);
+
         std::memcpy(&page_pointer[vaddr & PAGE_MASK], &data, sizeof(T));
         return;
     }
@@ -185,6 +202,29 @@ u8* GetPointer(const VAddr vaddr) {
 
 u8* GetPhysicalPointer(PAddr address) {
     return GetPointer(PhysicalToVirtualAddress(address));
+}
+
+void MarkRegionCached(PAddr start, u32 size, bool value) {
+    u32 num_pages = ((start + size - 1) >> PAGE_BITS) - (start >> PAGE_BITS) + 1;
+    PAddr paddr = start;
+
+    for (unsigned i = 0; i < num_pages; ++i) {
+        VAddr vaddr = PhysicalToVirtualAddress(paddr);
+        if (vaddr != (paddr | 0x80000000)) {
+            if (value) {
+                current_page_table->cached_res_count[vaddr >> PAGE_BITS]++;
+            } else {
+                current_page_table->cached_res_count[vaddr >> PAGE_BITS]--;
+            }
+        }
+        paddr += PAGE_SIZE;
+    }
+}
+
+void FlushRegion(PAddr start, u32 size, bool invalidate) {
+    // This is the common dispatch point to tell all components to
+    // flush any resources they have cached that touch the given region
+    VideoCore::g_renderer->Rasterizer()->FlushRegion(start, size, invalidate);
 }
 
 u8 Read8(const VAddr addr) {

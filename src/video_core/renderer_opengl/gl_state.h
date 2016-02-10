@@ -5,6 +5,14 @@
 #pragma once
 
 #include <glad/glad.h>
+#include <memory>
+
+class OGLTexture;
+class OGLSampler;
+class OGLShader;
+class OGLBuffer;
+class OGLVertexArray;
+class OGLFramebuffer;
 
 class OpenGLState {
 public:
@@ -57,21 +65,21 @@ public:
 
     // 3 texture units - one for each that is used in PICA fragment shader emulation
     struct {
-        GLuint texture_2d; // GL_TEXTURE_BINDING_2D
-        GLuint sampler; // GL_SAMPLER_BINDING
+        std::weak_ptr<OGLTexture> texture_2d; // GL_TEXTURE_BINDING_2D
+        std::weak_ptr<OGLSampler> sampler; // GL_SAMPLER_BINDING
     } texture_units[3];
 
     struct {
-        GLuint texture_1d; // GL_TEXTURE_BINDING_1D
-    } lighting_lut[6];
+        std::weak_ptr<OGLTexture> texture_1d; // GL_TEXTURE_BINDING_1D
+    } lighting_luts[6];
 
     struct {
-        GLuint framebuffer; // GL_DRAW_FRAMEBUFFER_BINDING
-        GLuint vertex_array; // GL_VERTEX_ARRAY_BINDING
-        GLuint vertex_buffer; // GL_ARRAY_BUFFER_BINDING
-        GLuint uniform_buffer; // GL_UNIFORM_BUFFER_BINDING
-        GLuint shader_program; // GL_CURRENT_PROGRAM
-        bool shader_dirty;
+        std::weak_ptr<OGLFramebuffer> read_framebuffer; // GL_READ_FRAMEBUFFER_BINDING
+        std::weak_ptr<OGLFramebuffer> draw_framebuffer; // GL_DRAW_FRAMEBUFFER_BINDING
+        std::weak_ptr<OGLVertexArray> vertex_array; // GL_VERTEX_ARRAY_BINDING
+        std::weak_ptr<OGLBuffer> vertex_buffer; // GL_ARRAY_BUFFER_BINDING
+        std::weak_ptr<OGLBuffer> uniform_buffer; // GL_UNIFORM_BUFFER_BINDING
+        std::weak_ptr<OGLShader> shader_program; // GL_CURRENT_PROGRAM
     } draw;
 
     OpenGLState();
@@ -82,15 +90,39 @@ public:
     }
 
     /// Apply this state as the current OpenGL state
-    void Apply();
+    void Apply() const;
 
-    static void ResetTexture(GLuint id);
-    static void ResetSampler(GLuint id);
-    static void ResetProgram(GLuint id);
-    static void ResetBuffer(GLuint id);
-    static void ResetVertexArray(GLuint id);
-    static void ResetFramebuffer(GLuint id);
+    /// Check the status of the current OpenGL read or draw framebuffer configuration
+    static GLenum CheckFBStatus(GLenum target);
+
+    /// Resets and unbinds any references to the given resource in the current OpenGL state
+    static void ResetTexture(const OGLTexture* texture);
+    static void ResetSampler(const OGLSampler* sampler);
+    static void ResetProgram(const OGLShader* program);
+    static void ResetBuffer(const OGLBuffer* buffer);
+    static void ResetVertexArray(const OGLVertexArray* vertex_array);
+    static void ResetFramebuffer(const OGLFramebuffer* framebuffer);
 
 private:
     static OpenGLState cur_state;
+
+    static struct ResourceHandles {
+        struct {
+            GLuint texture_2d;
+            GLuint sampler;
+        } texture_units[3];
+
+        struct {
+            GLuint texture_1d;
+        } lighting_luts[6];
+
+        struct {
+            GLuint read_framebuffer;
+            GLuint draw_framebuffer;
+            GLuint vertex_array;
+            GLuint vertex_buffer;
+            GLuint uniform_buffer;
+            GLuint shader_program;
+        } draw;
+    } cur_res_handles;
 };

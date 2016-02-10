@@ -83,6 +83,7 @@ int main(int argc, char **argv) {
 
     VideoCore::g_hw_renderer_enabled = Settings::values.use_hw_renderer;
     VideoCore::g_shader_jit_enabled = Settings::values.use_shader_jit;
+    VideoCore::g_scaled_resolution_enabled = Settings::values.use_scaled_resolution;
 
     System::Init(emu_window.get());
     SCOPE_EXIT({ System::Shutdown(); });

@@ -148,4 +148,15 @@ VAddr PhysicalToVirtualAddress(PAddr addr);
  */
 u8* GetPhysicalPointer(PAddr address);
 
+/**
+ * Increments (if value true) or decrements (if false) the resource cache counter of each
+ * page touching the region
+ */
+void MarkRegionCached(PAddr start, u32 size, bool value);
+
+/**
+ * Flushes and optionally invalidates any externally cached resources touching the given region
+ */
+void FlushRegion(PAddr start, u32 size, bool invalidate);
+
 }

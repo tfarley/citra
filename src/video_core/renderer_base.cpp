@@ -23,7 +23,5 @@ void RendererBase::RefreshRasterizerSetting() {
         } else {
             rasterizer = Common::make_unique<VideoCore::SWRasterizer>();
         }
-        rasterizer->InitObjects();
-        rasterizer->Reset();
     }
 }

@@ -577,7 +577,7 @@ struct Regs {
         }
     }
 
-    struct {
+    struct FramebufferConfig {
         INSERT_PADDING_WORDS(0x6);
 
         DepthFormat depth_format; // TODO: Should be a BitField!

@@ -115,6 +115,7 @@ ResultVal<bool> File::SyncRequest() {
                 return read.Code();
             }
             cmd_buff[2] = static_cast<u32>(*read);
+            Memory::FlushRegion(Memory::VirtualToPhysicalAddress(address), length, true);
             break;
         }
 

@@ -156,6 +156,9 @@ GMainWindow::GMainWindow() : emu_thread(nullptr)
     ui.action_Use_Shader_JIT->setChecked(Settings::values.use_shader_jit);
     SetShaderJITEnabled(ui.action_Use_Shader_JIT->isChecked());
 
+    ui.action_Use_Scaled_Resolution->setChecked(Settings::values.use_scaled_resolution);
+    SetScaledResolutionEnabled(ui.action_Use_Scaled_Resolution->isChecked());
+
     ui.action_Single_Window_Mode->setChecked(settings.value("singleWindowMode", true).toBool());
     ToggleWindowMode();
 
@@ -184,6 +187,7 @@ GMainWindow::GMainWindow() : emu_thread(nullptr)
     connect(ui.action_Stop, SIGNAL(triggered()), this, SLOT(OnStopGame()));
     connect(ui.action_Use_Hardware_Renderer, SIGNAL(triggered(bool)), this, SLOT(SetHardwareRendererEnabled(bool)));
     connect(ui.action_Use_Shader_JIT, SIGNAL(triggered(bool)), this, SLOT(SetShaderJITEnabled(bool)));
+    connect(ui.action_Use_Scaled_Resolution, SIGNAL(triggered(bool)), this, SLOT(SetScaledResolutionEnabled(bool)));
     connect(ui.action_Use_Gdbstub, SIGNAL(triggered(bool)), this, SLOT(SetGdbstubEnabled(bool)));
     connect(ui.action_Single_Window_Mode, SIGNAL(triggered(bool)), this, SLOT(ToggleWindowMode()));
     connect(ui.action_Hotkeys, SIGNAL(triggered()), this, SLOT(OnOpenHotkeysDialog()));
@@ -518,6 +522,14 @@ void GMainWindow::SetShaderJITEnabled(bool enabled) {
 
     Config config;
     Settings::values.use_shader_jit = enabled;
+    config.Save();
+}
+
+void GMainWindow::SetScaledResolutionEnabled(bool enabled) {
+    VideoCore::g_scaled_resolution_enabled = enabled;
+
+    Config config;
+    Settings::values.use_scaled_resolution = enabled;
     config.Save();
 }
 
