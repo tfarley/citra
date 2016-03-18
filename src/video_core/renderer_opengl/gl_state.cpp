@@ -7,7 +7,6 @@
 #include "video_core/renderer_opengl/gl_state.h"
 
 OpenGLState OpenGLState::cur_state;
-OpenGLState::ResourceHandles OpenGLState::cur_res_handles;
 
 OpenGLState::OpenGLState() {
     // These all match default OpenGL values
@@ -45,7 +44,21 @@ OpenGLState::OpenGLState() {
 
     logic_op = GL_COPY;
 
-    memset(&cur_res_handles, 0, sizeof(cur_res_handles));
+    for (auto& texture_unit : texture_units) {
+        texture_unit.texture_2d = 0;
+        texture_unit.sampler = 0;
+    }
+
+    for (auto& lut : lighting_luts) {
+        lut.texture_1d = 0;
+    }
+
+    draw.read_framebuffer = 0;
+    draw.draw_framebuffer = 0;
+    draw.vertex_array = 0;
+    draw.vertex_buffer = 0;
+    draw.uniform_buffer = 0;
+    draw.shader_program = 0;
 }
 
 void OpenGLState::Apply() const {
@@ -155,77 +168,49 @@ void OpenGLState::Apply() const {
 
     // Textures
     for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
-        const auto& texture_2d = texture_units[i].texture_2d.lock();
-        GLuint texture_2d_handle = texture_2d != nullptr ? texture_2d->handle : 0;
-        if (texture_2d_handle != cur_res_handles.texture_units[i].texture_2d) {
+        if (texture_units[i].texture_2d != cur_state.texture_units[i].texture_2d) {
             glActiveTexture(GL_TEXTURE0 + i);
-            glBindTexture(GL_TEXTURE_2D, texture_2d_handle);
-            cur_res_handles.texture_units[i].texture_2d = texture_2d_handle;
+            glBindTexture(GL_TEXTURE_2D, texture_units[i].texture_2d);
         }
-
-        const auto& sampler = texture_units[i].sampler.lock();
-        GLuint sampler_handle = sampler != nullptr ? sampler->handle : 0;
-        if (sampler_handle != cur_res_handles.texture_units[i].sampler) {
-            glBindSampler(i, sampler_handle);
-            cur_res_handles.texture_units[i].sampler = sampler_handle;
+        if (texture_units[i].sampler != cur_state.texture_units[i].sampler) {
+            glBindSampler(i, texture_units[i].sampler);
         }
     }
 
     // Lighting LUTs
     for (unsigned i = 0; i < ARRAY_SIZE(lighting_luts); ++i) {
-        const auto& texture_1d = lighting_luts[i].texture_1d.lock();
-        GLuint texture_1d_handle = texture_1d != nullptr ? texture_1d->handle : 0;
-        if (texture_1d_handle != cur_res_handles.lighting_luts[i].texture_1d) {
+        if (lighting_luts[i].texture_1d != cur_state.lighting_luts[i].texture_1d) {
             glActiveTexture(GL_TEXTURE3 + i);
-            glBindTexture(GL_TEXTURE_1D, texture_1d_handle);
-            cur_res_handles.lighting_luts[i].texture_1d = texture_1d_handle;
+            glBindTexture(GL_TEXTURE_1D, lighting_luts[i].texture_1d);
         }
     }
 
     // Framebuffer
-    const auto& read_framebuffer = draw.read_framebuffer.lock();
-    GLuint read_framebuffer_handle = read_framebuffer != nullptr ? read_framebuffer->handle : 0;
-    if (read_framebuffer_handle != cur_res_handles.draw.read_framebuffer) {
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, read_framebuffer_handle);
-        cur_res_handles.draw.read_framebuffer = read_framebuffer_handle;
+    if (draw.read_framebuffer != cur_state.draw.read_framebuffer) {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, draw.read_framebuffer);
     }
-    const auto& draw_framebuffer = draw.draw_framebuffer.lock();
-    GLuint draw_framebuffer_handle = draw_framebuffer != nullptr ? draw_framebuffer->handle : 0;
-    if (draw_framebuffer_handle != cur_res_handles.draw.draw_framebuffer) {
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw_framebuffer_handle);
-        cur_res_handles.draw.draw_framebuffer = draw_framebuffer_handle;
+    if (draw.draw_framebuffer != cur_state.draw.draw_framebuffer) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw.draw_framebuffer);
     }
 
     // Vertex array
-    const auto& vertex_array = draw.vertex_array.lock();
-    GLuint vertex_array_handle = vertex_array != nullptr ? vertex_array->handle : 0;
-    if (vertex_array_handle != cur_res_handles.draw.vertex_array) {
-        glBindVertexArray(vertex_array_handle);
-        cur_res_handles.draw.vertex_array = vertex_array_handle;
+    if (draw.vertex_array != cur_state.draw.vertex_array) {
+        glBindVertexArray(draw.vertex_array);
     }
 
     // Vertex buffer
-    const auto& vertex_buffer = draw.vertex_buffer.lock();
-    GLuint vertex_buffer_handle = vertex_buffer != nullptr ? vertex_buffer->handle : 0;
-    if (vertex_buffer_handle != cur_res_handles.draw.vertex_buffer) {
-        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_handle);
-        cur_res_handles.draw.vertex_buffer = vertex_buffer_handle;
+    if (draw.vertex_buffer != cur_state.draw.vertex_buffer) {
+        glBindBuffer(GL_ARRAY_BUFFER, draw.vertex_buffer);
     }
 
     // Uniform buffer
-    const auto& uniform_buffer = draw.uniform_buffer.lock();
-    GLuint uniform_buffer_handle = uniform_buffer != nullptr ? uniform_buffer->handle : 0;
-    if (uniform_buffer_handle != cur_res_handles.draw.uniform_buffer) {
-        glBindBuffer(GL_UNIFORM_BUFFER, uniform_buffer_handle);
-        cur_res_handles.draw.uniform_buffer = uniform_buffer_handle;
+    if (draw.uniform_buffer != cur_state.draw.uniform_buffer) {
+        glBindBuffer(GL_UNIFORM_BUFFER, draw.uniform_buffer);
     }
 
     // Shader program
-    const auto& shader_program = draw.shader_program.lock();
-    GLuint shader_program_handle = shader_program != nullptr ? shader_program->handle : 0;
-    if (shader_program_handle != cur_res_handles.draw.shader_program) {
-        glUseProgram(shader_program_handle);
-        cur_res_handles.draw.shader_program = shader_program_handle;
+    if (draw.shader_program != cur_state.draw.shader_program) {
+        glUseProgram(draw.shader_program);
     }
 
     cur_state = *this;
@@ -241,60 +226,48 @@ GLenum OpenGLState::CheckFBStatus(GLenum target) {
     return fb_status;
 }
 
-void OpenGLState::ResetTexture(const OGLTexture* texture) {
+void OpenGLState::ResetTexture(GLuint handle) {
     for (auto& unit : cur_state.texture_units) {
-        if (unit.texture_2d.lock().get() == texture) {
-            unit.texture_2d.reset();
+        if (unit.texture_2d == handle) {
+            unit.texture_2d = 0;
         }
     }
-
-    cur_state.Apply();
 }
 
-void OpenGLState::ResetSampler(const OGLSampler* sampler) {
+void OpenGLState::ResetSampler(GLuint handle) {
     for (auto& unit : cur_state.texture_units) {
-        if (unit.sampler.lock().get() == sampler) {
-            unit.sampler.reset();
+        if (unit.sampler == handle) {
+            unit.sampler = 0;
         }
     }
-
-    cur_state.Apply();
 }
 
-void OpenGLState::ResetProgram(const OGLShader* program) {
-    if (cur_state.draw.shader_program.lock().get() == program) {
-        cur_state.draw.shader_program.reset();
+void OpenGLState::ResetProgram(GLuint handle) {
+    if (cur_state.draw.shader_program == handle) {
+        cur_state.draw.shader_program = 0;
     }
-
-    cur_state.Apply();
 }
 
-void OpenGLState::ResetBuffer(const OGLBuffer* buffer) {
-    if (cur_state.draw.vertex_buffer.lock().get() == buffer) {
-        cur_state.draw.vertex_buffer.reset();
+void OpenGLState::ResetBuffer(GLuint handle) {
+    if (cur_state.draw.vertex_buffer == handle) {
+        cur_state.draw.vertex_buffer = 0;
     }
-    if (cur_state.draw.uniform_buffer.lock().get() == buffer) {
-        cur_state.draw.uniform_buffer.reset();
+    if (cur_state.draw.uniform_buffer == handle) {
+        cur_state.draw.uniform_buffer = 0;
     }
-
-    cur_state.Apply();
 }
 
-void OpenGLState::ResetVertexArray(const OGLVertexArray* vertex_array) {
-    if (cur_state.draw.vertex_array.lock().get() == vertex_array) {
-        cur_state.draw.vertex_array.reset();
+void OpenGLState::ResetVertexArray(GLuint handle) {
+    if (cur_state.draw.vertex_array == handle) {
+        cur_state.draw.vertex_array = 0;
     }
-
-    cur_state.Apply();
 }
 
-void OpenGLState::ResetFramebuffer(const OGLFramebuffer* framebuffer) {
-    if (cur_state.draw.read_framebuffer.lock().get() == framebuffer) {
-        cur_state.draw.read_framebuffer.reset();
+void OpenGLState::ResetFramebuffer(GLuint handle) {
+    if (cur_state.draw.read_framebuffer == handle) {
+        cur_state.draw.read_framebuffer = 0;
     }
-    if (cur_state.draw.draw_framebuffer.lock().get() == framebuffer) {
-        cur_state.draw.draw_framebuffer.reset();
+    if (cur_state.draw.draw_framebuffer == handle) {
+        cur_state.draw.draw_framebuffer = 0;
     }
-
-    cur_state.Apply();
 }

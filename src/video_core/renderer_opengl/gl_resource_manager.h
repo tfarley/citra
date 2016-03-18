@@ -30,7 +30,7 @@ public:
     void Release() {
         if (handle == 0) return;
         glDeleteTextures(1, &handle);
-        OpenGLState::ResetTexture(this);
+        OpenGLState::ResetTexture(handle);
         handle = 0;
     }
 
@@ -54,7 +54,7 @@ public:
     void Release() {
         if (handle == 0) return;
         glDeleteSamplers(1, &handle);
-        OpenGLState::ResetSampler(this);
+        OpenGLState::ResetSampler(handle);
         handle = 0;
     }
 
@@ -78,7 +78,7 @@ public:
     void Release() {
         if (handle == 0) return;
         glDeleteProgram(handle);
-        OpenGLState::ResetProgram(this);
+        OpenGLState::ResetProgram(handle);
         handle = 0;
     }
 
@@ -102,7 +102,7 @@ public:
     void Release() {
         if (handle == 0) return;
         glDeleteBuffers(1, &handle);
-        OpenGLState::ResetBuffer(this);
+        OpenGLState::ResetBuffer(handle);
         handle = 0;
     }
 
@@ -126,7 +126,7 @@ public:
     void Release() {
         if (handle == 0) return;
         glDeleteVertexArrays(1, &handle);
-        OpenGLState::ResetVertexArray(this);
+        OpenGLState::ResetVertexArray(handle);
         handle = 0;
     }
 
@@ -150,7 +150,7 @@ public:
     void Release() {
         if (handle == 0) return;
         glDeleteFramebuffers(1, &handle);
-        OpenGLState::ResetFramebuffer(this);
+        OpenGLState::ResetFramebuffer(handle);
         handle = 0;
     }
 

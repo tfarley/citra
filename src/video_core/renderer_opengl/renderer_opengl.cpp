@@ -189,14 +189,14 @@ void RendererOpenGL::LoadFBToScreenInfo(const GPU::Regs::FramebufferConfig& fram
 
     if (!Rasterizer()->AccelerateDisplay(framebuffer, framebuffer_addr, pixel_stride, screen_info)) {
         // Reset the screen info's display texture to its own permanent texture
-        screen_info.display_texture = screen_info.texture.resource;
+        screen_info.display_texture = screen_info.texture.resource.handle;
         screen_info.display_texcoords = MathUtil::Rectangle<float>(0.f, 0.f, 1.f, 1.f);
 
         Memory::FlushRegion(framebuffer_addr, framebuffer.stride * framebuffer.height, false);
 
         const u8* framebuffer_data = Memory::GetPhysicalPointer(framebuffer_addr);
 
-        state.texture_units[0].texture_2d = screen_info.texture.resource;
+        state.texture_units[0].texture_2d = screen_info.texture.resource.handle;
         state.Apply();
 
         glActiveTexture(GL_TEXTURE0);
@@ -212,7 +212,7 @@ void RendererOpenGL::LoadFBToScreenInfo(const GPU::Regs::FramebufferConfig& fram
 
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
-        state.texture_units[0].texture_2d.reset();
+        state.texture_units[0].texture_2d = 0;
         state.Apply();
     }
 }
@@ -224,7 +224,7 @@ void RendererOpenGL::LoadFBToScreenInfo(const GPU::Regs::FramebufferConfig& fram
  */
 void RendererOpenGL::LoadColorToActiveGLTexture(u8 color_r, u8 color_g, u8 color_b,
                                                 const TextureInfo& texture) {
-    state.texture_units[0].texture_2d = texture.resource;
+    state.texture_units[0].texture_2d = texture.resource.handle;
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);
@@ -241,26 +241,23 @@ void RendererOpenGL::InitOpenGLObjects() {
     glClearColor(Settings::values.bg_red, Settings::values.bg_green, Settings::values.bg_blue, 0.0f);
 
     // Link shaders and get variable locations
-    shader = std::make_shared<OGLShader>();
-    shader->Create(vertex_shader, fragment_shader);
-    state.draw.shader_program = shader;
+    shader.Create(vertex_shader, fragment_shader);
+    state.draw.shader_program = shader.handle;
     state.Apply();
-    uniform_modelview_matrix = glGetUniformLocation(shader->handle, "modelview_matrix");
-    uniform_color_texture = glGetUniformLocation(shader->handle, "color_texture");
-    attrib_position = glGetAttribLocation(shader->handle, "vert_position");
-    attrib_tex_coord = glGetAttribLocation(shader->handle, "vert_tex_coord");
+    uniform_modelview_matrix = glGetUniformLocation(shader.handle, "modelview_matrix");
+    uniform_color_texture = glGetUniformLocation(shader.handle, "color_texture");
+    attrib_position = glGetAttribLocation(shader.handle, "vert_position");
+    attrib_tex_coord = glGetAttribLocation(shader.handle, "vert_tex_coord");
 
     // Generate VBO handle for drawing
-    vertex_buffer = std::make_shared<OGLBuffer>();
-    vertex_buffer->Create();
+    vertex_buffer.Create();
 
     // Generate VAO
-    vertex_array = std::make_shared<OGLVertexArray>();
-    vertex_array->Create();
+    vertex_array.Create();
 
-    state.draw.vertex_array = vertex_array;
-    state.draw.vertex_buffer = vertex_buffer;
-    state.draw.uniform_buffer.reset();
+    state.draw.vertex_array = vertex_array.handle;
+    state.draw.vertex_buffer = vertex_buffer.handle;
+    state.draw.uniform_buffer = 0;
     state.Apply();
 
     // Attach vertex data to VAO
@@ -272,13 +269,12 @@ void RendererOpenGL::InitOpenGLObjects() {
 
     // Allocate textures for each screen
     for (auto& screen_info : screen_infos) {
-        screen_info.texture.resource = std::make_shared<OGLTexture>();
-        screen_info.texture.resource->Create();
+        screen_info.texture.resource.Create();
 
         // Allocation of storage is deferred until the first frame, when we
         // know the framebuffer size.
 
-        state.texture_units[0].texture_2d = screen_info.texture.resource;
+        state.texture_units[0].texture_2d = screen_info.texture.resource.handle;
         state.Apply();
 
         glActiveTexture(GL_TEXTURE0);
@@ -288,10 +284,10 @@ void RendererOpenGL::InitOpenGLObjects() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        screen_info.display_texture = screen_info.texture.resource;
+        screen_info.display_texture = screen_info.texture.resource.handle;
     }
 
-    state.texture_units[0].texture_2d.reset();
+    state.texture_units[0].texture_2d = 0;
     state.Apply();
 }
 
@@ -343,7 +339,7 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
         UNIMPLEMENTED();
     }
 
-    state.texture_units[0].texture_2d = texture.resource;
+    state.texture_units[0].texture_2d = texture.resource.handle;
     state.Apply();
 
     glActiveTexture(GL_TEXTURE0);

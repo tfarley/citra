@@ -41,28 +41,25 @@ RasterizerOpenGL::RasterizerOpenGL() : shader_dirty(true) {
     // Create sampler objects
     for (size_t i = 0; i < texture_samplers.size(); ++i) {
         texture_samplers[i].Create();
-        state.texture_units[i].sampler = texture_samplers[i].sampler;
+        state.texture_units[i].sampler = texture_samplers[i].sampler.handle;
     }
 
     // Generate VBO, VAO and UBO
-    vertex_buffer = std::make_shared<OGLBuffer>();
-    vertex_buffer->Create();
-    vertex_array = std::make_shared<OGLVertexArray>();
-    vertex_array->Create();
-    uniform_buffer = std::make_shared<OGLBuffer>();
-    uniform_buffer->Create();
+    vertex_buffer.Create();
+    vertex_array.Create();
+    uniform_buffer.Create();
 
-    state.draw.vertex_array = vertex_array;
-    state.draw.vertex_buffer = vertex_buffer;
-    state.draw.uniform_buffer = uniform_buffer;
+    state.draw.vertex_array = vertex_array.handle;
+    state.draw.vertex_buffer = vertex_buffer.handle;
+    state.draw.uniform_buffer = uniform_buffer.handle;
     state.Apply();
 
     // Bind the UBO to binding point 0
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uniform_buffer->handle);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uniform_buffer.handle);
 
     uniform_block_data.dirty = true;
 
-    for (unsigned index = 0; index < lighting_lut.size(); index++) {
+    for (unsigned index = 0; index < lighting_luts.size(); index++) {
         uniform_block_data.lut_dirty[index] = true;
     }
 
@@ -87,18 +84,16 @@ RasterizerOpenGL::RasterizerOpenGL() : shader_dirty(true) {
     glEnableVertexAttribArray(GLShader::ATTRIBUTE_VIEW);
 
     // Create render framebuffer
-    framebuffer = std::make_shared<OGLFramebuffer>();
-    framebuffer->Create();
+    framebuffer.Create();
 
     // Allocate and bind lighting lut textures
-    for (size_t i = 0; i < lighting_lut.size(); ++i) {
-        lighting_lut[i] = std::make_shared<OGLTexture>();
-        lighting_lut[i]->Create();
-        state.lighting_luts[i].texture_1d = lighting_lut[i];
+    for (size_t i = 0; i < lighting_luts.size(); ++i) {
+        lighting_luts[i].Create();
+        state.lighting_luts[i].texture_1d = lighting_luts[i].handle;
     }
     state.Apply();
 
-    for (size_t i = 0; i < lighting_lut.size(); ++i) {
+    for (size_t i = 0; i < lighting_luts.size(); ++i) {
         glActiveTexture(GL_TEXTURE3 + i);
         glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 256, 0, GL_RGBA, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -162,13 +157,13 @@ void RasterizerOpenGL::DrawTriangles() {
     MathUtil::Rectangle<int> rect;
     std::tie(color_surface, depth_surface) = res_cache.GetFramebufferSurfaces(regs.framebuffer, rect);
 
-    state.draw.draw_framebuffer = framebuffer;
+    state.draw.draw_framebuffer = framebuffer.handle;
     state.Apply();
 
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_surface != nullptr ? color_surface->texture->handle : 0, 0);
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_surface != nullptr ? depth_surface->texture->handle : 0, 0);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_surface != nullptr ? color_surface->texture.handle : 0, 0);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_surface != nullptr ? depth_surface->texture.handle : 0, 0);
     bool has_stencil = regs.framebuffer.depth_format == Pica::Regs::DepthFormat::D24S8;
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, (has_stencil && depth_surface != nullptr) ? depth_surface->texture->handle : 0, 0);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, (has_stencil && depth_surface != nullptr) ? depth_surface->texture.handle : 0, 0);
 
     if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         return;
@@ -192,12 +187,12 @@ void RasterizerOpenGL::DrawTriangles() {
             texture_samplers[texture_index].SyncWithConfig(texture.config);
             CachedSurface* surface = res_cache.GetTextureSurface(texture);
             if (surface != nullptr) {
-                state.texture_units[texture_index].texture_2d = surface->texture;
+                state.texture_units[texture_index].texture_2d = surface->texture.handle;
             } else {
-                state.texture_units[texture_index].texture_2d.reset();
+                state.texture_units[texture_index].texture_2d = 0;
             }
         } else {
-            state.texture_units[texture_index].texture_2d.reset();
+            state.texture_units[texture_index].texture_2d = 0;
         }
     }
 
@@ -208,7 +203,7 @@ void RasterizerOpenGL::DrawTriangles() {
     }
 
     // Sync the lighting luts
-    for (unsigned index = 0; index < lighting_lut.size(); index++) {
+    for (unsigned index = 0; index < lighting_luts.size(); index++) {
         if (uniform_block_data.lut_dirty[index]) {
             SyncLightingLUT(index);
             uniform_block_data.lut_dirty[index] = false;
@@ -242,7 +237,7 @@ void RasterizerOpenGL::DrawTriangles() {
 
     // Unbind textures for potential future use as framebuffer attachments
     for (unsigned texture_index = 0; texture_index < pica_textures.size(); ++texture_index) {
-        state.texture_units[texture_index].texture_2d.reset();
+        state.texture_units[texture_index].texture_2d = 0;
     }
     state.Apply();
 }
@@ -620,14 +615,14 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
 
     SurfaceType dst_type = CachedSurface::GetFormatType(dst_surface->pixel_format);
 
-    auto old_fb = cur_state.draw.draw_framebuffer;
-    cur_state.draw.draw_framebuffer = framebuffer;
+    GLuint old_fb = cur_state.draw.draw_framebuffer;
+    cur_state.draw.draw_framebuffer = framebuffer.handle;
     // TODO: Disable scissor test in cur_state here so Clear call isn't affected
     cur_state.Apply();
 
     // TODO: Test this on texture surface types
     if (dst_type == SurfaceType::Color || dst_type == SurfaceType::Texture) {
-        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst_surface->texture->handle, 0);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst_surface->texture.handle, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
         if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
@@ -658,7 +653,7 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
         glClearBufferfv(GL_COLOR, 0, value);
     } else if (dst_type == SurfaceType::Depth) {
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
-        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, dst_surface->texture->handle, 0);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, dst_surface->texture.handle, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
         if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
@@ -677,7 +672,7 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
         glClearBufferfv(GL_DEPTH, 0, &value_float);
     } else if (dst_type == SurfaceType::DepthStencil) {
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
-        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, dst_surface->texture->handle, 0);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, dst_surface->texture.handle, 0);
 
         if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             return false;
@@ -726,24 +721,23 @@ bool RasterizerOpenGL::AccelerateDisplay(const GPU::Regs::FramebufferConfig& con
                                                                (float)src_rect.bottom / (float)src_surface->height,
                                                                (float)src_rect.right / (float)src_surface->width);
 
-    screen_info.display_texture = src_surface->texture;
+    screen_info.display_texture = src_surface->texture.handle;
 
     return true;
 }
 
 void RasterizerOpenGL::SamplerInfo::Create() {
-    sampler = std::make_shared<OGLSampler>();
-    sampler->Create();
+    sampler.Create();
     mag_filter = min_filter = TextureConfig::Linear;
     wrap_s = wrap_t = TextureConfig::Repeat;
     border_color = 0;
 
-    glSamplerParameteri(sampler->handle, GL_TEXTURE_MIN_FILTER, GL_LINEAR); // default is GL_LINEAR_MIPMAP_LINEAR
+    glSamplerParameteri(sampler.handle, GL_TEXTURE_MIN_FILTER, GL_LINEAR); // default is GL_LINEAR_MIPMAP_LINEAR
     // Other attributes have correct defaults
 }
 
 void RasterizerOpenGL::SamplerInfo::SyncWithConfig(const Pica::Regs::TextureConfig& config) {
-    GLuint s = sampler->handle;
+    GLuint s = sampler.handle;
 
     if (mag_filter != config.mag_filter) {
         mag_filter = config.mag_filter;
@@ -773,49 +767,49 @@ void RasterizerOpenGL::SamplerInfo::SyncWithConfig(const Pica::Regs::TextureConf
 
 void RasterizerOpenGL::SetShader() {
     PicaShaderConfig config = PicaShaderConfig::CurrentConfig();
+    std::unique_ptr<PicaShader> shader = Common::make_unique<PicaShader>();
 
     // Find (or generate) the GLSL shader for the current TEV state
     auto cached_shader = shader_cache.find(config);
     if (cached_shader != shader_cache.end()) {
-        current_shader = cached_shader->second;
+        current_shader = cached_shader->second.get();
 
-        state.draw.shader_program = current_shader;
+        state.draw.shader_program = current_shader->shader.handle;
         state.Apply();
     } else {
         LOG_DEBUG(Render_OpenGL, "Creating new shader");
 
-        std::shared_ptr<OGLShader> shader = std::make_shared<OGLShader>();
-        shader->Create(GLShader::GenerateVertexShader().c_str(), GLShader::GenerateFragmentShader(config).c_str());
+        shader->shader.Create(GLShader::GenerateVertexShader().c_str(), GLShader::GenerateFragmentShader(config).c_str());
 
-        state.draw.shader_program = shader;
+        state.draw.shader_program = shader->shader.handle;
         state.Apply();
 
         // Set the texture samplers to correspond to different texture units
-        GLuint uniform_tex = glGetUniformLocation(shader->handle, "tex[0]");
+        GLuint uniform_tex = glGetUniformLocation(shader->shader.handle, "tex[0]");
         if (uniform_tex != -1) { glUniform1i(uniform_tex, 0); }
-        uniform_tex = glGetUniformLocation(shader->handle, "tex[1]");
+        uniform_tex = glGetUniformLocation(shader->shader.handle, "tex[1]");
         if (uniform_tex != -1) { glUniform1i(uniform_tex, 1); }
-        uniform_tex = glGetUniformLocation(shader->handle, "tex[2]");
+        uniform_tex = glGetUniformLocation(shader->shader.handle, "tex[2]");
         if (uniform_tex != -1) { glUniform1i(uniform_tex, 2); }
 
         // Set the texture samplers to correspond to different lookup table texture units
-        GLuint uniform_lut = glGetUniformLocation(shader->handle, "lut[0]");
+        GLuint uniform_lut = glGetUniformLocation(shader->shader.handle, "lut[0]");
         if (uniform_lut != -1) { glUniform1i(uniform_lut, 3); }
-        uniform_lut = glGetUniformLocation(shader->handle, "lut[1]");
+        uniform_lut = glGetUniformLocation(shader->shader.handle, "lut[1]");
         if (uniform_lut != -1) { glUniform1i(uniform_lut, 4); }
-        uniform_lut = glGetUniformLocation(shader->handle, "lut[2]");
+        uniform_lut = glGetUniformLocation(shader->shader.handle, "lut[2]");
         if (uniform_lut != -1) { glUniform1i(uniform_lut, 5); }
-        uniform_lut = glGetUniformLocation(shader->handle, "lut[3]");
+        uniform_lut = glGetUniformLocation(shader->shader.handle, "lut[3]");
         if (uniform_lut != -1) { glUniform1i(uniform_lut, 6); }
-        uniform_lut = glGetUniformLocation(shader->handle, "lut[4]");
+        uniform_lut = glGetUniformLocation(shader->shader.handle, "lut[4]");
         if (uniform_lut != -1) { glUniform1i(uniform_lut, 7); }
-        uniform_lut = glGetUniformLocation(shader->handle, "lut[5]");
+        uniform_lut = glGetUniformLocation(shader->shader.handle, "lut[5]");
         if (uniform_lut != -1) { glUniform1i(uniform_lut, 8); }
 
-        current_shader = shader_cache.emplace(config, std::move(shader)).first->second;
+        current_shader = shader_cache.emplace(config, std::move(shader)).first->second.get();
 
-        unsigned int block_index = glGetUniformBlockIndex(current_shader->handle, "shader_data");
-        glUniformBlockBinding(current_shader->handle, block_index, 0);
+        unsigned int block_index = glGetUniformBlockIndex(current_shader->shader.handle, "shader_data");
+        glUniformBlockBinding(current_shader->shader.handle, block_index, 0);
 
         // Update uniforms
         SyncAlphaTest();

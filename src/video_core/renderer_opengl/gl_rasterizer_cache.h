@@ -163,7 +163,7 @@ struct CachedSurface {
     PAddr min_valid;
     PAddr max_valid;
 
-    std::shared_ptr<OGLTexture> texture;
+    OGLTexture texture;
     u32 width;
     u32 height;
     u32 stride = 0;
@@ -181,7 +181,7 @@ public:
     ~RasterizerCacheOpenGL();
 
     /// Blits one texture to another
-    bool BlitTextures(std::shared_ptr<OGLTexture> src_tex, std::shared_ptr<OGLTexture> dst_tex, CachedSurface::SurfaceType type, const MathUtil::Rectangle<int>& src_rect, const MathUtil::Rectangle<int>& dst_rect);
+    bool BlitTextures(GLuint src_tex, GLuint dst_tex, CachedSurface::SurfaceType type, const MathUtil::Rectangle<int>& src_rect, const MathUtil::Rectangle<int>& dst_rect);
 
     /// Attempt to blit one surface's texture to another
     bool TryBlitSurfaces(CachedSurface* src_surface, CachedSurface* dst_surface, const MathUtil::Rectangle<int>& src_rect, const MathUtil::Rectangle<int>& dst_rect);
@@ -212,5 +212,5 @@ public:
 
 private:
     SurfaceCache surface_cache;
-    std::shared_ptr<OGLFramebuffer> transfer_framebuffers[2];
+    OGLFramebuffer transfer_framebuffers[2];
 };

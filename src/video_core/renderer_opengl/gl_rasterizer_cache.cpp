@@ -42,10 +42,8 @@ static const std::array<FormatTuple, 4> depth_format_tuples = {{
 }};
 
 RasterizerCacheOpenGL::RasterizerCacheOpenGL() {
-    transfer_framebuffers[0] = std::make_shared<OGLFramebuffer>();
-    transfer_framebuffers[0]->Create();
-    transfer_framebuffers[1] = std::make_shared<OGLFramebuffer>();
-    transfer_framebuffers[1]->Create();
+    transfer_framebuffers[0].Create();
+    transfer_framebuffers[1].Create();
 }
 
 RasterizerCacheOpenGL::~RasterizerCacheOpenGL() {
@@ -96,47 +94,47 @@ static void MortonCopyPixels(CachedSurface::PixelFormat pixel_format, u32 width,
     }
 }
 
-bool RasterizerCacheOpenGL::BlitTextures(std::shared_ptr<OGLTexture> src_tex, std::shared_ptr<OGLTexture> dst_tex, CachedSurface::SurfaceType type, const MathUtil::Rectangle<int>& src_rect, const MathUtil::Rectangle<int>& dst_rect) {
+bool RasterizerCacheOpenGL::BlitTextures(GLuint src_tex, GLuint dst_tex, CachedSurface::SurfaceType type, const MathUtil::Rectangle<int>& src_rect, const MathUtil::Rectangle<int>& dst_rect) {
     using SurfaceType = CachedSurface::SurfaceType;
 
     OpenGLState cur_state = OpenGLState::GetCurState();
 
     // Make sure textures aren't bound to texture units, since going to bind them to framebuffer components
-    OpenGLState::ResetTexture(src_tex.get());
-    OpenGLState::ResetTexture(dst_tex.get());
+    OpenGLState::ResetTexture(src_tex);
+    OpenGLState::ResetTexture(dst_tex);
 
     // Keep track of previous framebuffer bindings
-    std::weak_ptr<OGLFramebuffer> old_fbs[2] = { cur_state.draw.read_framebuffer, cur_state.draw.draw_framebuffer };
-    cur_state.draw.read_framebuffer = transfer_framebuffers[0];
-    cur_state.draw.draw_framebuffer = transfer_framebuffers[1];
+    GLuint old_fbs[2] = { cur_state.draw.read_framebuffer, cur_state.draw.draw_framebuffer };
+    cur_state.draw.read_framebuffer = transfer_framebuffers[0].handle;
+    cur_state.draw.draw_framebuffer = transfer_framebuffers[1].handle;
     cur_state.Apply();
 
     u32 buffers = 0;
 
     if (type == SurfaceType::Color || type == SurfaceType::Texture) {
-        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, src_tex->handle, 0);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, src_tex, 0);
         glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
-        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst_tex->handle, 0);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst_tex, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
         buffers = GL_COLOR_BUFFER_BIT;
     } else if (type == SurfaceType::Depth) {
         glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
-        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, src_tex->handle, 0);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, src_tex, 0);
         glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
-        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, dst_tex->handle, 0);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, dst_tex, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
         buffers = GL_DEPTH_BUFFER_BIT;
     } else if (type == SurfaceType::DepthStencil) {
         glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
-        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, src_tex->handle, 0);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, src_tex, 0);
 
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
-        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, dst_tex->handle, 0);
+        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, dst_tex, 0);
 
         buffers = GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT;
     }
@@ -168,17 +166,17 @@ bool RasterizerCacheOpenGL::TryBlitSurfaces(CachedSurface* src_surface, CachedSu
         return false;
     }
 
-    return BlitTextures(src_surface->texture, dst_surface->texture, CachedSurface::GetFormatType(src_surface->pixel_format), src_rect, dst_rect);
+    return BlitTextures(src_surface->texture.handle, dst_surface->texture.handle, CachedSurface::GetFormatType(src_surface->pixel_format), src_rect, dst_rect);
 }
 
-static void AllocateSurfaceTexture(std::shared_ptr<OGLTexture> texture, CachedSurface::PixelFormat pixel_format, u32 width, u32 height) {
+static void AllocateSurfaceTexture(GLuint texture, CachedSurface::PixelFormat pixel_format, u32 width, u32 height) {
     // Allocate an uninitialized texture of appropriate size and format for the surface
     using SurfaceType = CachedSurface::SurfaceType;
 
     OpenGLState cur_state = OpenGLState::GetCurState();
 
     // Keep track of previous texture bindings
-    auto old_tex = cur_state.texture_units[0].texture_2d;
+    GLuint old_tex = cur_state.texture_units[0].texture_2d;
     cur_state.texture_units[0].texture_2d = texture;
     cur_state.Apply();
     glActiveTexture(GL_TEXTURE0);
@@ -271,8 +269,7 @@ CachedSurface* RasterizerCacheOpenGL::GetSurface(const CachedSurface& params, bo
     new_surface->addr = params.addr;
     new_surface->size = params_size;
 
-    new_surface->texture = std::make_shared<OGLTexture>();
-    new_surface->texture->Create();
+    new_surface->texture.Create();
     new_surface->width = params.width;
     new_surface->height = params.height;
     new_surface->stride = params.stride;
@@ -285,7 +282,7 @@ CachedSurface* RasterizerCacheOpenGL::GetSurface(const CachedSurface& params, bo
 
     if (!load_if_create) {
         // Don't load any data; just allocate the surface's texture
-        AllocateSurfaceTexture(new_surface->texture, new_surface->pixel_format, new_surface->GetScaledWidth(), new_surface->GetScaledHeight());
+        AllocateSurfaceTexture(new_surface->texture.handle, new_surface->pixel_format, new_surface->GetScaledWidth(), new_surface->GetScaledHeight());
     } else {
         // TODO: Consider attempting subrect match in existing surfaces and direct blit here instead of memory upload below if that's a common scenario in some game
 
@@ -294,8 +291,8 @@ CachedSurface* RasterizerCacheOpenGL::GetSurface(const CachedSurface& params, bo
         // Load data from memory to the new surface
         OpenGLState cur_state = OpenGLState::GetCurState();
 
-        auto old_tex = cur_state.texture_units[0].texture_2d;
-        cur_state.texture_units[0].texture_2d = new_surface->texture;
+        GLuint old_tex = cur_state.texture_units[0].texture_2d;
+        cur_state.texture_units[0].texture_2d = new_surface->texture.handle;
         cur_state.Apply();
         glActiveTexture(GL_TEXTURE0);
 
@@ -361,16 +358,18 @@ CachedSurface* RasterizerCacheOpenGL::GetSurface(const CachedSurface& params, bo
 
         // If not 1x scale, blit 1x texture to a new scaled texture and replace texture in surface
         if (new_surface->res_scale_width != 1.f || new_surface->res_scale_height != 1.f) {
-            auto scaled_texture = std::make_shared<OGLTexture>();
-            scaled_texture->Create();
+            OGLTexture scaled_texture;
+            scaled_texture.Create();
 
-            AllocateSurfaceTexture(scaled_texture, new_surface->pixel_format, new_surface->GetScaledWidth(), new_surface->GetScaledHeight());
-            BlitTextures(new_surface->texture, scaled_texture, CachedSurface::GetFormatType(new_surface->pixel_format),
+            AllocateSurfaceTexture(scaled_texture.handle, new_surface->pixel_format, new_surface->GetScaledWidth(), new_surface->GetScaledHeight());
+            BlitTextures(new_surface->texture.handle, scaled_texture.handle, CachedSurface::GetFormatType(new_surface->pixel_format),
                 MathUtil::Rectangle<int>(0, 0, new_surface->width, new_surface->height),
                 MathUtil::Rectangle<int>(0, 0, new_surface->GetScaledWidth(), new_surface->GetScaledHeight()));
 
-            new_surface->texture = scaled_texture;
-            cur_state.texture_units[0].texture_2d = new_surface->texture;
+            new_surface->texture.Release();
+            new_surface->texture.handle = scaled_texture.handle;
+            scaled_texture.handle = 0;
+            cur_state.texture_units[0].texture_2d = new_surface->texture.handle;
             cur_state.Apply();
         }
 
@@ -587,19 +586,21 @@ void RasterizerCacheOpenGL::FlushSurface(CachedSurface* surface) {
     }
 
     OpenGLState cur_state = OpenGLState::GetCurState();
-    auto old_tex = cur_state.texture_units[0].texture_2d;
+    GLuint old_tex = cur_state.texture_units[0].texture_2d;
 
-    auto texture_to_flush = surface->texture;
+    OGLTexture unscaled_tex;
+    GLuint texture_to_flush = surface->texture.handle;
 
     // If not 1x scale, blit scaled texture to a new 1x texture and use that to flush
     if (surface->res_scale_width != 1.f || surface->res_scale_height != 1.f) {
-        texture_to_flush = std::make_shared<OGLTexture>();
-        texture_to_flush->Create();
+        unscaled_tex.Create();
 
-        AllocateSurfaceTexture(texture_to_flush, surface->pixel_format, surface->width, surface->height);
-        BlitTextures(surface->texture, texture_to_flush, CachedSurface::GetFormatType(surface->pixel_format),
+        AllocateSurfaceTexture(unscaled_tex.handle, surface->pixel_format, surface->width, surface->height);
+        BlitTextures(surface->texture.handle, unscaled_tex.handle, CachedSurface::GetFormatType(surface->pixel_format),
             MathUtil::Rectangle<int>(0, 0, surface->GetScaledWidth(), surface->GetScaledHeight()),
             MathUtil::Rectangle<int>(0, 0, surface->width, surface->height));
+
+        texture_to_flush = unscaled_tex.handle;
     }
 
     cur_state.texture_units[0].texture_2d = texture_to_flush;

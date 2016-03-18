@@ -11,13 +11,14 @@
 #include "core/hw/gpu.h"
 
 #include "video_core/renderer_base.h"
+#include "video_core/renderer_opengl/gl_resource_manager.h"
 #include "video_core/renderer_opengl/gl_state.h"
 
 class EmuWindow;
 
 /// Structure used for storing information about the textures for each 3DS screen
 struct TextureInfo {
-    std::shared_ptr<OGLTexture> resource;
+    OGLTexture resource;
     GLsizei width;
     GLsizei height;
     GPU::Regs::PixelFormat format;
@@ -27,7 +28,7 @@ struct TextureInfo {
 
 /// Structure used for storing information about the display target for each 3DS screen
 struct ScreenInfo {
-    std::shared_ptr<OGLTexture> display_texture;
+    GLuint display_texture;
     MathUtil::Rectangle<float> display_texcoords;
     TextureInfo texture;
 };
@@ -76,9 +77,9 @@ private:
     OpenGLState state;
 
     // OpenGL object IDs
-    std::shared_ptr<OGLVertexArray> vertex_array;
-    std::shared_ptr<OGLBuffer> vertex_buffer;
-    std::shared_ptr<OGLShader> shader;
+    OGLVertexArray vertex_array;
+    OGLBuffer vertex_buffer;
+    OGLShader shader;
     std::array<ScreenInfo, 2> screen_infos;          ///< Display information for top and bottom screens respectively
     // Shader uniform location indices
     GLuint uniform_modelview_matrix;

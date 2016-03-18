@@ -203,12 +203,18 @@ public:
     bool AccelerateFill(const GPU::Regs::MemoryFillConfig& config) override;
     bool AccelerateDisplay(const GPU::Regs::FramebufferConfig& config, PAddr framebuffer_addr, u32 pixel_stride, ScreenInfo& screen_info) override;
 
+    /// OpenGL shader generated for a given Pica register state
+    struct PicaShader {
+        /// OpenGL shader resource
+        OGLShader shader;
+    };
+
 private:
 
     struct SamplerInfo {
         using TextureConfig = Pica::Regs::TextureConfig;
 
-        std::shared_ptr<OGLSampler> sampler;
+        OGLSampler sampler;
 
         /// Creates the sampler object, initializing its state so that it's in sync with the SamplerInfo struct.
         void Create();
@@ -349,8 +355,8 @@ private:
 
     std::vector<HardwareVertex> vertex_batch;
 
-    std::unordered_map<PicaShaderConfig, std::shared_ptr<OGLShader>> shader_cache;
-    std::shared_ptr<OGLShader> current_shader;
+    std::unordered_map<PicaShaderConfig, std::unique_ptr<PicaShader>> shader_cache;
+    const PicaShader* current_shader = nullptr;
     bool shader_dirty;
 
     struct {
@@ -360,11 +366,11 @@ private:
     } uniform_block_data;
 
     std::array<SamplerInfo, 3> texture_samplers;
-    std::shared_ptr<OGLVertexArray> vertex_array;
-    std::shared_ptr<OGLBuffer> vertex_buffer;
-    std::shared_ptr<OGLBuffer> uniform_buffer;
-    std::shared_ptr<OGLFramebuffer> framebuffer;
+    OGLVertexArray vertex_array;
+    OGLBuffer vertex_buffer;
+    OGLBuffer uniform_buffer;
+    OGLFramebuffer framebuffer;
 
-    std::array<std::shared_ptr<OGLTexture>, 6> lighting_lut;
+    std::array<OGLTexture, 6> lighting_luts;
     std::array<std::array<GLvec4, 256>, 6> lighting_lut_data;
 };
