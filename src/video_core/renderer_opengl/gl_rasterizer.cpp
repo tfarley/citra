@@ -37,10 +37,13 @@ static bool IsPassThroughTevStage(const Pica::Regs::TevStageConfig& stage) {
 }
 
 RasterizerOpenGL::RasterizerOpenGL() : shader_dirty(true) {
+    state.MakeCurrent();
+
     // Create sampler objects
     for (size_t i = 0; i < texture_samplers.size(); ++i) {
         texture_samplers[i].Create();
-        state.texture_units[i].sampler = texture_samplers[i].sampler.handle;
+        state.SetActiveTextureUnit(GL_TEXTURE0 + i);
+        state.SetSampler(texture_samplers[i].sampler.handle);
     }
 
     // Generate VBO, VAO and UBO
@@ -48,10 +51,9 @@ RasterizerOpenGL::RasterizerOpenGL() : shader_dirty(true) {
     vertex_array.Create();
     uniform_buffer.Create();
 
-    state.draw.vertex_array = vertex_array.handle;
-    state.draw.vertex_buffer = vertex_buffer.handle;
-    state.draw.uniform_buffer = uniform_buffer.handle;
-    state.Apply();
+    state.SetVertexArray(vertex_array.handle);
+    state.SetVertexBuffer(vertex_buffer.handle);
+    state.SetUniformBuffer(uniform_buffer.handle);
 
     // Bind the UBO to binding point 0
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uniform_buffer.handle);
@@ -88,12 +90,8 @@ RasterizerOpenGL::RasterizerOpenGL() : shader_dirty(true) {
     // Allocate and bind lighting lut textures
     for (size_t i = 0; i < lighting_luts.size(); ++i) {
         lighting_luts[i].Create();
-        state.lighting_luts[i].texture_1d = lighting_luts[i].handle;
-    }
-    state.Apply();
-
-    for (size_t i = 0; i < lighting_luts.size(); ++i) {
-        glActiveTexture(GL_TEXTURE3 + i);
+        state.SetActiveTextureUnit(GL_TEXTURE3 + i);
+        state.SetLUTTexture1D(lighting_luts[i].handle);
         glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 256, 0, GL_RGBA, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -151,6 +149,8 @@ void RasterizerOpenGL::DrawTriangles() {
     if (vertex_batch.empty())
         return;
 
+    state.MakeCurrent();
+
     const auto& regs = Pica::g_state.regs;
 
     // Sync and bind the framebuffer surfaces
@@ -159,8 +159,7 @@ void RasterizerOpenGL::DrawTriangles() {
     MathUtil::Rectangle<int> rect;
     std::tie(color_surface, depth_surface, rect) = res_cache.GetFramebufferSurfaces(regs.framebuffer);
 
-    state.draw.draw_framebuffer = framebuffer.handle;
-    state.Apply();
+    state.SetDrawFramebuffer(framebuffer.handle);
 
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_surface != nullptr ? color_surface->texture.handle : 0, 0);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_surface != nullptr ? depth_surface->texture.handle : 0, 0);
@@ -188,14 +187,16 @@ void RasterizerOpenGL::DrawTriangles() {
         if (texture.enabled) {
             texture_samplers[texture_index].SyncWithConfig(texture.config);
             CachedSurface* surface = res_cache.GetTextureSurface(texture);
+            state.SetActiveTextureUnit(GL_TEXTURE0 + texture_index);
             if (surface != nullptr) {
-                state.texture_units[texture_index].texture_2d = surface->texture.handle;
+                state.SetTexture2D(surface->texture.handle);
             } else {
                 // Can occur when texture addr is null or its memory is unmapped/invalid
-                state.texture_units[texture_index].texture_2d = 0;
+                state.SetTexture2D(0);
             }
         } else {
-            state.texture_units[texture_index].texture_2d = 0;
+            state.SetActiveTextureUnit(GL_TEXTURE0 + texture_index);
+            state.SetTexture2D(0);
         }
     }
 
@@ -219,8 +220,6 @@ void RasterizerOpenGL::DrawTriangles() {
         uniform_block_data.dirty = false;
     }
 
-    state.Apply();
-
     // Draw the vertex batch
     glBufferData(GL_ARRAY_BUFFER, vertex_batch.size() * sizeof(HardwareVertex), vertex_batch.data(), GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)vertex_batch.size());
@@ -240,13 +239,15 @@ void RasterizerOpenGL::DrawTriangles() {
 
     // Unbind textures for potential future use as framebuffer attachments
     for (unsigned texture_index = 0; texture_index < pica_textures.size(); ++texture_index) {
-        state.texture_units[texture_index].texture_2d = 0;
+        state.SetActiveTextureUnit(GL_TEXTURE0 + texture_index);
+        state.SetTexture2D(0);
     }
-    state.Apply();
 }
 
 void RasterizerOpenGL::NotifyPicaRegisterChanged(u32 id) {
     const auto& regs = Pica::g_state.regs;
+
+    state.MakeCurrent();
 
     switch(id) {
     // Culling
@@ -609,20 +610,20 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
         return false;
     }
 
-    OpenGLState cur_state = OpenGLState::GetCurState();
-
     SurfaceType dst_type = CachedSurface::GetFormatType(dst_surface->pixel_format);
 
-    GLuint old_fb = cur_state.draw.draw_framebuffer;
-    cur_state.draw.draw_framebuffer = framebuffer.handle;
-    // TODO: When scissor test is implemented, need to disable scissor test in cur_state here so Clear call isn't affected
-    cur_state.Apply();
+    OpenGLState* old_state = OpenGLState::GetCurrentState();
+    utility_state.MakeCurrent();
+
+    utility_state.SetDrawFramebuffer(framebuffer.handle);
+    // TODO: When scissor test is implemented, need to disable scissor test in the state here so Clear call isn't affected
 
     if (dst_type == SurfaceType::Color || dst_type == SurfaceType::Texture) {
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst_surface->texture.handle, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
         if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            old_state->MakeCurrent();
             return false;
         }
 
@@ -640,6 +641,7 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
                 color_values[2] = config.value_24bit_b / 255.0f;
                 break;
             default:
+                old_state->MakeCurrent();
                 return false;
             }
         } else if (config.fill_32bit) {
@@ -653,6 +655,7 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
                 color_values[3] = (value & 0xFF) / 255.0f;
                 break;
             default:
+                old_state->MakeCurrent();
                 return false;
             }
         } else {
@@ -692,15 +695,12 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
                 color_values[1] = (value_16bit & 0xFF) / 255.0f;
                 break;
             default:
+                old_state->MakeCurrent();
                 return false;
             }
         }
 
-        cur_state.color_mask.red_enabled = true;
-        cur_state.color_mask.green_enabled = true;
-        cur_state.color_mask.blue_enabled = true;
-        cur_state.color_mask.alpha_enabled = true;
-        cur_state.Apply();
+        utility_state.SetColorMask(true, true, true, true);
         glClearBufferfv(GL_COLOR, 0, color_values);
     } else if (dst_type == SurfaceType::Depth) {
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
@@ -708,6 +708,7 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
         if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            old_state->MakeCurrent();
             return false;
         }
 
@@ -718,29 +719,26 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
             value_float = config.value_32bit / 16777215.0f; // 2^24 - 1
         }
 
-        cur_state.depth.write_mask = true;
-        cur_state.Apply();
+        utility_state.SetDepthWriteMask(true);
         glClearBufferfv(GL_DEPTH, 0, &value_float);
     } else if (dst_type == SurfaceType::DepthStencil) {
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, dst_surface->texture.handle, 0);
 
         if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            old_state->MakeCurrent();
             return false;
         }
 
         GLfloat value_float = (config.value_32bit & 0xFFFFFF) / 16777215.0f; // 2^24 - 1
         GLint value_int = (config.value_32bit >> 24);
 
-        cur_state.depth.write_mask = true;
-        cur_state.stencil.write_mask = true;
-        cur_state.Apply();
+        utility_state.SetDepthWriteMask(true);
+        utility_state.SetStencilWriteMask(true);
         glClearBufferfi(GL_DEPTH_STENCIL, 0, value_float, value_int);
     }
 
-    cur_state.draw.draw_framebuffer = old_fb;
-    // TODO: Return scissor test to previous value when scissor test is implemented
-    cur_state.Apply();
+    old_state->MakeCurrent();
 
     dst_surface->dirty = true;
     res_cache.FlushRegion(dst_surface->addr, dst_surface->size, dst_surface, true);
@@ -824,20 +822,20 @@ void RasterizerOpenGL::SetShader() {
     PicaShaderConfig config = PicaShaderConfig::CurrentConfig();
     std::unique_ptr<PicaShader> shader = std::make_unique<PicaShader>();
 
+    state.MakeCurrent();
+
     // Find (or generate) the GLSL shader for the current TEV state
     auto cached_shader = shader_cache.find(config);
     if (cached_shader != shader_cache.end()) {
         current_shader = cached_shader->second.get();
 
-        state.draw.shader_program = current_shader->shader.handle;
-        state.Apply();
+        state.SetShaderProgram(current_shader->shader.handle);
     } else {
         LOG_DEBUG(Render_OpenGL, "Creating new shader");
 
         shader->shader.Create(GLShader::GenerateVertexShader().c_str(), GLShader::GenerateFragmentShader(config).c_str());
 
-        state.draw.shader_program = shader->shader.handle;
-        state.Apply();
+        state.SetShaderProgram(shader->shader.handle);
 
         // Set the texture samplers to correspond to different texture units
         GLuint uniform_tex = glGetUniformLocation(shader->shader.handle, "tex[0]");
@@ -889,17 +887,17 @@ void RasterizerOpenGL::SyncCullMode() {
 
     switch (regs.cull_mode) {
     case Pica::Regs::CullMode::KeepAll:
-        state.cull.enabled = false;
+        state.SetCullEnabled(false);
         break;
 
     case Pica::Regs::CullMode::KeepClockWise:
-        state.cull.enabled = true;
-        state.cull.front_face = GL_CW;
+        state.SetCullEnabled(true);
+        state.SetCullFrontFace(GL_CW);
         break;
 
     case Pica::Regs::CullMode::KeepCounterClockWise:
-        state.cull.enabled = true;
-        state.cull.front_face = GL_CCW;
+        state.SetCullEnabled(true);
+        state.SetCullFrontFace(GL_CCW);
         break;
 
     default:
@@ -919,23 +917,23 @@ void RasterizerOpenGL::SyncDepthModifiers() {
 }
 
 void RasterizerOpenGL::SyncBlendEnabled() {
-    state.blend.enabled = (Pica::g_state.regs.output_merger.alphablend_enable == 1);
+    state.SetBlendEnabled(Pica::g_state.regs.output_merger.alphablend_enable == 1);
 }
 
 void RasterizerOpenGL::SyncBlendFuncs() {
     const auto& regs = Pica::g_state.regs;
-    state.blend.src_rgb_func = PicaToGL::BlendFunc(regs.output_merger.alpha_blending.factor_source_rgb);
-    state.blend.dst_rgb_func = PicaToGL::BlendFunc(regs.output_merger.alpha_blending.factor_dest_rgb);
-    state.blend.src_a_func = PicaToGL::BlendFunc(regs.output_merger.alpha_blending.factor_source_a);
-    state.blend.dst_a_func = PicaToGL::BlendFunc(regs.output_merger.alpha_blending.factor_dest_a);
+    state.SetBlendFunc(PicaToGL::BlendFunc(regs.output_merger.alpha_blending.factor_source_rgb),
+                       PicaToGL::BlendFunc(regs.output_merger.alpha_blending.factor_dest_rgb),
+                       PicaToGL::BlendFunc(regs.output_merger.alpha_blending.factor_source_a),
+                       PicaToGL::BlendFunc(regs.output_merger.alpha_blending.factor_dest_a));
 }
 
 void RasterizerOpenGL::SyncBlendColor() {
     auto blend_color = PicaToGL::ColorRGBA8(Pica::g_state.regs.output_merger.blend_const.raw);
-    state.blend.color.red = blend_color[0];
-    state.blend.color.green = blend_color[1];
-    state.blend.color.blue = blend_color[2];
-    state.blend.color.alpha = blend_color[3];
+    state.SetBlendColor(blend_color[0],
+                        blend_color[1],
+                        blend_color[2],
+                        blend_color[3]);
 }
 
 void RasterizerOpenGL::SyncAlphaTest() {
@@ -947,7 +945,7 @@ void RasterizerOpenGL::SyncAlphaTest() {
 }
 
 void RasterizerOpenGL::SyncLogicOp() {
-    state.logic_op = PicaToGL::LogicOp(Pica::g_state.regs.output_merger.logic_op);
+    state.SetLogicOp(PicaToGL::LogicOp(Pica::g_state.regs.output_merger.logic_op));
 }
 
 void RasterizerOpenGL::SyncColorWriteMask() {
@@ -957,43 +955,43 @@ void RasterizerOpenGL::SyncColorWriteMask() {
         return (regs.framebuffer.allow_color_write != 0 && value != 0) ? GL_TRUE : GL_FALSE;
     };
 
-    state.color_mask.red_enabled = IsColorWriteEnabled(regs.output_merger.red_enable);
-    state.color_mask.green_enabled = IsColorWriteEnabled(regs.output_merger.green_enable);
-    state.color_mask.blue_enabled = IsColorWriteEnabled(regs.output_merger.blue_enable);
-    state.color_mask.alpha_enabled = IsColorWriteEnabled(regs.output_merger.alpha_enable);
+    state.SetColorMask(IsColorWriteEnabled(regs.output_merger.red_enable),
+                       IsColorWriteEnabled(regs.output_merger.green_enable),
+                       IsColorWriteEnabled(regs.output_merger.blue_enable),
+                       IsColorWriteEnabled(regs.output_merger.alpha_enable));
 }
 
 void RasterizerOpenGL::SyncStencilWriteMask() {
     const auto& regs = Pica::g_state.regs;
-    state.stencil.write_mask = (regs.framebuffer.allow_depth_stencil_write != 0)
-                             ? static_cast<GLuint>(regs.output_merger.stencil_test.write_mask)
-                             : 0;
+    state.SetStencilWriteMask((regs.framebuffer.allow_depth_stencil_write != 0)
+                              ? static_cast<GLuint>(regs.output_merger.stencil_test.write_mask)
+                              : 0);
 }
 
 void RasterizerOpenGL::SyncDepthWriteMask() {
     const auto& regs = Pica::g_state.regs;
-    state.depth.write_mask = (regs.framebuffer.allow_depth_stencil_write != 0 && regs.output_merger.depth_write_enable)
-                           ? GL_TRUE
-                           : GL_FALSE;
+    state.SetDepthWriteMask((regs.framebuffer.allow_depth_stencil_write != 0 && regs.output_merger.depth_write_enable)
+                            ? GL_TRUE
+                            : GL_FALSE);
 }
 
 void RasterizerOpenGL::SyncStencilTest() {
     const auto& regs = Pica::g_state.regs;
-    state.stencil.test_enabled = regs.output_merger.stencil_test.enable && regs.framebuffer.depth_format == Pica::Regs::DepthFormat::D24S8;
-    state.stencil.test_func = PicaToGL::CompareFunc(regs.output_merger.stencil_test.func);
-    state.stencil.test_ref = regs.output_merger.stencil_test.reference_value;
-    state.stencil.test_mask = regs.output_merger.stencil_test.input_mask;
-    state.stencil.action_stencil_fail = PicaToGL::StencilOp(regs.output_merger.stencil_test.action_stencil_fail);
-    state.stencil.action_depth_fail = PicaToGL::StencilOp(regs.output_merger.stencil_test.action_depth_fail);
-    state.stencil.action_depth_pass = PicaToGL::StencilOp(regs.output_merger.stencil_test.action_depth_pass);
+    state.SetStencilTestEnabled(regs.output_merger.stencil_test.enable && regs.framebuffer.depth_format == Pica::Regs::DepthFormat::D24S8);
+    state.SetStencilFunc(PicaToGL::CompareFunc(regs.output_merger.stencil_test.func),
+                         regs.output_merger.stencil_test.reference_value,
+                         regs.output_merger.stencil_test.input_mask);
+    state.SetStencilOp(PicaToGL::StencilOp(regs.output_merger.stencil_test.action_stencil_fail),
+                       PicaToGL::StencilOp(regs.output_merger.stencil_test.action_depth_fail),
+                       PicaToGL::StencilOp(regs.output_merger.stencil_test.action_depth_pass));
 }
 
 void RasterizerOpenGL::SyncDepthTest() {
     const auto& regs = Pica::g_state.regs;
-    state.depth.test_enabled = regs.output_merger.depth_test_enable  == 1 ||
-                               regs.output_merger.depth_write_enable == 1;
-    state.depth.test_func = regs.output_merger.depth_test_enable == 1 ?
-                            PicaToGL::CompareFunc(regs.output_merger.depth_test_func) : GL_ALWAYS;
+    state.SetDepthTestEnabled(regs.output_merger.depth_test_enable  == 1 ||
+                              regs.output_merger.depth_write_enable == 1);
+    state.SetDepthFunc(regs.output_merger.depth_test_enable == 1 ?
+                       PicaToGL::CompareFunc(regs.output_merger.depth_test_func) : GL_ALWAYS);
 }
 
 void RasterizerOpenGL::SyncCombinerColor() {
@@ -1032,7 +1030,7 @@ void RasterizerOpenGL::SyncLightingLUT(unsigned lut_index) {
 
     if (new_data != lighting_lut_data[lut_index]) {
         lighting_lut_data[lut_index] = new_data;
-        glActiveTexture(GL_TEXTURE3 + lut_index);
+        state.SetActiveTextureUnit(GL_TEXTURE3 + lut_index);
         glTexSubImage1D(GL_TEXTURE_1D, 0, 0, 256, GL_RGBA, GL_FLOAT, lighting_lut_data[lut_index].data());
     }
 }

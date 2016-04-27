@@ -217,6 +217,10 @@ public:
     void FlushAll();
 
 private:
+    void AllocateSurfaceTexture(GLuint texture, CachedSurface::PixelFormat pixel_format, u32 width, u32 height);
+
+    OpenGLState utility_state;
+
     SurfaceCache surface_cache;
     OGLFramebuffer transfer_framebuffers[2];
 };

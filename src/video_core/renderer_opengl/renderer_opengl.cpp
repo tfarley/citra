@@ -108,9 +108,7 @@ RendererOpenGL::~RendererOpenGL() {
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
-    // Maintain the rasterizer's state as a priority
-    OpenGLState prev_state = OpenGLState::GetCurState();
-    state.Apply();
+    state.MakeCurrent();
 
     for (int i : {0, 1}) {
         const auto& framebuffer = GPU::g_regs.framebuffer_config[i];
@@ -157,8 +155,6 @@ void RendererOpenGL::SwapBuffers() {
     render_window->PollEvents();
     render_window->SwapBuffers();
 
-    prev_state.Apply();
-
     profiler.BeginFrame();
 
     RefreshRasterizerSetting();
@@ -201,10 +197,9 @@ void RendererOpenGL::LoadFBToScreenInfo(const GPU::Regs::FramebufferConfig& fram
 
         const u8* framebuffer_data = Memory::GetPhysicalPointer(framebuffer_addr);
 
-        state.texture_units[0].texture_2d = screen_info.texture.resource.handle;
-        state.Apply();
+        state.SetActiveTextureUnit(GL_TEXTURE0);
+        state.SetTexture2D(screen_info.texture.resource.handle);
 
-        glActiveTexture(GL_TEXTURE0);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)pixel_stride);
 
         // Update existing texture
@@ -217,8 +212,7 @@ void RendererOpenGL::LoadFBToScreenInfo(const GPU::Regs::FramebufferConfig& fram
 
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
-        state.texture_units[0].texture_2d = 0;
-        state.Apply();
+        state.SetTexture2D(0);
     }
 }
 
@@ -229,29 +223,28 @@ void RendererOpenGL::LoadFBToScreenInfo(const GPU::Regs::FramebufferConfig& fram
  */
 void RendererOpenGL::LoadColorToActiveGLTexture(u8 color_r, u8 color_g, u8 color_b,
                                                 const TextureInfo& texture) {
-    state.texture_units[0].texture_2d = texture.resource.handle;
-    state.Apply();
+    state.SetActiveTextureUnit(GL_TEXTURE0);
+    state.SetTexture2D(texture.resource.handle);
 
-    glActiveTexture(GL_TEXTURE0);
     u8 framebuffer_data[3] = { color_r, color_g, color_b };
 
     // Update existing texture
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, framebuffer_data);
 
-    state.texture_units[0].texture_2d = 0;
-    state.Apply();
+    state.SetTexture2D(0);
 }
 
 /**
  * Initializes the OpenGL state and creates persistent objects.
  */
 void RendererOpenGL::InitOpenGLObjects() {
+    state.MakeCurrent();
+
     glClearColor(Settings::values.bg_red, Settings::values.bg_green, Settings::values.bg_blue, 0.0f);
 
     // Link shaders and get variable locations
     shader.Create(vertex_shader, fragment_shader);
-    state.draw.shader_program = shader.handle;
-    state.Apply();
+    state.SetShaderProgram(shader.handle);
     uniform_modelview_matrix = glGetUniformLocation(shader.handle, "modelview_matrix");
     uniform_color_texture = glGetUniformLocation(shader.handle, "color_texture");
     attrib_position = glGetAttribLocation(shader.handle, "vert_position");
@@ -263,10 +256,9 @@ void RendererOpenGL::InitOpenGLObjects() {
     // Generate VAO
     vertex_array.Create();
 
-    state.draw.vertex_array = vertex_array.handle;
-    state.draw.vertex_buffer = vertex_buffer.handle;
-    state.draw.uniform_buffer = 0;
-    state.Apply();
+    state.SetVertexArray(vertex_array.handle);
+    state.SetVertexBuffer(vertex_buffer.handle);
+    state.SetUniformBuffer(0);
 
     // Attach vertex data to VAO
     glBufferData(GL_ARRAY_BUFFER, sizeof(ScreenRectVertex) * 4, nullptr, GL_STREAM_DRAW);
@@ -282,21 +274,19 @@ void RendererOpenGL::InitOpenGLObjects() {
         // Allocation of storage is deferred until the first frame, when we
         // know the framebuffer size.
 
-        state.texture_units[0].texture_2d = screen_info.texture.resource.handle;
-        state.Apply();
+        state.SetActiveTextureUnit(GL_TEXTURE0);
+        state.SetTexture2D(screen_info.texture.resource.handle);
 
-        glActiveTexture(GL_TEXTURE0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+        state.SetTexture2D(0);
+
         screen_info.display_texture = screen_info.texture.resource.handle;
     }
-
-    state.texture_units[0].texture_2d = 0;
-    state.Apply();
 }
 
 void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
@@ -347,15 +337,13 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
         UNIMPLEMENTED();
     }
 
-    state.texture_units[0].texture_2d = texture.resource.handle;
-    state.Apply();
+    state.SetActiveTextureUnit(GL_TEXTURE0);
+    state.SetTexture2D(texture.resource.handle);
 
-    glActiveTexture(GL_TEXTURE0);
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, texture.width, texture.height, 0,
             texture.gl_format, texture.gl_type, nullptr);
 
-    state.texture_units[0].texture_2d = 0;
-    state.Apply();
+    state.SetTexture2D(0);
 }
 
 /**
@@ -371,14 +359,13 @@ void RendererOpenGL::DrawSingleScreenRotated(const ScreenInfo& screen_info, floa
         ScreenRectVertex(x+w, y+h, texcoords.top, texcoords.right),
     }};
 
-    state.texture_units[0].texture_2d = screen_info.display_texture;
-    state.Apply();
+    state.SetActiveTextureUnit(GL_TEXTURE0);
+    state.SetTexture2D(screen_info.display_texture);
 
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices.data());
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-    state.texture_units[0].texture_2d = 0;
-    state.Apply();
+    state.SetTexture2D(0);
 }
 
 /**
@@ -396,7 +383,7 @@ void RendererOpenGL::DrawScreens() {
     glUniformMatrix3x2fv(uniform_modelview_matrix, 1, GL_FALSE, ortho_matrix.data());
 
     // Bind texture in Texture Unit 0
-    glActiveTexture(GL_TEXTURE0);
+    state.SetActiveTextureUnit(GL_TEXTURE0);
     glUniform1i(uniform_color_texture, 0);
 
     DrawSingleScreenRotated(screen_infos[0], (float)layout.top_screen.left, (float)layout.top_screen.top,

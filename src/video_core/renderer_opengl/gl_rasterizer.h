@@ -351,6 +351,7 @@ private:
     void SyncLightPosition(int light_index);
 
     OpenGLState state;
+    OpenGLState utility_state;
 
     RasterizerCacheOpenGL res_cache;
 
