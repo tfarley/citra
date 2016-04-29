@@ -2,15 +2,18 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <set>
 #include <glad/glad.h>
 
+#include "common/assert.h"
 #include "common/common_funcs.h"
 #include "common/logging/log.h"
 
 #include "video_core/renderer_opengl/gl_state.h"
 
-static OpenGLState default_state;
-OpenGLState* OpenGLState::cur_state = &default_state;
+std::set<OpenGLState*> states;
+OpenGLState default_state;
+OpenGLState* cur_state = &default_state;
 
 OpenGLState::OpenGLState() {
     // These all match default OpenGL values
@@ -62,6 +65,12 @@ OpenGLState::OpenGLState() {
     draw.vertex_buffer = 0;
     draw.uniform_buffer = 0;
     draw.shader_program = 0;
+
+    states.insert(this);
+}
+
+OpenGLState::~OpenGLState() {
+    states.erase(this);
 }
 
 OpenGLState* OpenGLState::GetCurrentState() {
@@ -94,12 +103,16 @@ void OpenGLState::MakeCurrent() {
 
     SetLogicOp(logic_op);
 
+    GLenum prev_active_texture_unit = active_texture_unit;
     for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
-        SetActiveTextureUnit(GL_TEXTURE0 + i);
+        glActiveTexture(GL_TEXTURE0 + i);
+        active_texture_unit = GL_TEXTURE0 + i;
         SetTexture1D(texture_units[i].texture_1d);
         SetTexture2D(texture_units[i].texture_2d);
         SetSampler(texture_units[i].sampler);
     }
+    active_texture_unit = prev_active_texture_unit;
+    glActiveTexture(cur_state->active_texture_unit);
 
     SetActiveTextureUnit(active_texture_unit);
 
@@ -347,61 +360,111 @@ void OpenGLState::SetShaderProgram(GLuint n_shader_program) {
 }
 
 void OpenGLState::ResetTexture(GLuint handle) {
-    for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
-        if (cur_state->texture_units[i].texture_1d == handle) {
-            GLenum prev_active_texture_unit = cur_state->active_texture_unit;
-            cur_state->SetActiveTextureUnit(GL_TEXTURE0 + i);
-            cur_state->SetTexture1D(0);
-            cur_state->SetActiveTextureUnit(prev_active_texture_unit);
-        }
+    for (OpenGLState* state : states) {
+        for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
+            if (state->texture_units[i].texture_1d == handle) {
+                if (state == cur_state) {
+                    GLenum prev_active_texture_unit = state->active_texture_unit;
+                    state->SetActiveTextureUnit(GL_TEXTURE0 + i);
+                    state->SetTexture1D(0);
+                    state->SetActiveTextureUnit(prev_active_texture_unit);
+                } else {
+                    state->texture_units[i].texture_1d = 0;
+                }
+            }
 
-        if (cur_state->texture_units[i].texture_2d == handle) {
-            GLenum prev_active_texture_unit = cur_state->active_texture_unit;
-            cur_state->SetActiveTextureUnit(GL_TEXTURE0 + i);
-            cur_state->SetTexture2D(0);
-            cur_state->SetActiveTextureUnit(prev_active_texture_unit);
+            if (state->texture_units[i].texture_2d == handle) {
+                if (state == cur_state) {
+                    GLenum prev_active_texture_unit = state->active_texture_unit;
+                    state->SetActiveTextureUnit(GL_TEXTURE0 + i);
+                    state->SetTexture2D(0);
+                    state->SetActiveTextureUnit(prev_active_texture_unit);
+                } else {
+                    state->texture_units[i].texture_2d = 0;
+                }
+            }
         }
     }
 }
 
 void OpenGLState::ResetSampler(GLuint handle) {
-    for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
-        if (cur_state->texture_units[i].sampler == handle) {
-            GLenum prev_active_texture_unit = cur_state->active_texture_unit;
-            cur_state->SetActiveTextureUnit(GL_TEXTURE0 + i);
-            cur_state->SetSampler(0);
-            cur_state->SetActiveTextureUnit(prev_active_texture_unit);
+    for (OpenGLState* state : states) {
+        for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
+            if (state->texture_units[i].sampler == handle) {
+                if (state == cur_state) {
+                    GLenum prev_active_texture_unit = state->active_texture_unit;
+                    state->SetActiveTextureUnit(GL_TEXTURE0 + i);
+                    state->SetSampler(0);
+                    state->SetActiveTextureUnit(prev_active_texture_unit);
+                } else {
+                    state->texture_units[i].sampler = 0;
+                }
+            }
         }
     }
 }
 
 void OpenGLState::ResetProgram(GLuint handle) {
-    if (cur_state->draw.shader_program == handle) {
-        cur_state->SetShaderProgram(0);
+    for (OpenGLState* state : states) {
+        if (state->draw.shader_program == handle) {
+            if (state == cur_state) {
+                state->SetShaderProgram(0);
+            } else {
+                state->draw.shader_program = 0;
+            }
+        }
     }
 }
 
 void OpenGLState::ResetBuffer(GLuint handle) {
-    if (cur_state->draw.vertex_buffer == handle) {
-        cur_state->SetVertexBuffer(0);
-    }
-    if (cur_state->draw.uniform_buffer == handle) {
-        cur_state->SetUniformBuffer(0);
+    for (OpenGLState* state : states) {
+        if (state->draw.vertex_buffer == handle) {
+            if (state == cur_state) {
+                state->SetVertexBuffer(0);
+            } else {
+                state->draw.vertex_buffer = 0;
+            }
+        }
+
+        if (state->draw.uniform_buffer == handle) {
+            if (state == cur_state) {
+                state->SetUniformBuffer(0);
+            } else {
+                state->draw.uniform_buffer = 0;
+            }
+        }
     }
 }
 
 void OpenGLState::ResetVertexArray(GLuint handle) {
-    if (cur_state->draw.vertex_array == handle) {
-        cur_state->SetVertexArray(0);
+    for (OpenGLState* state : states) {
+        if (state->draw.vertex_array == handle) {
+            if (state == cur_state) {
+                state->SetVertexArray(0);
+            } else {
+                state->draw.vertex_array = 0;
+            }
+        }
     }
 }
 
 void OpenGLState::ResetFramebuffer(GLuint handle) {
-    if (cur_state->draw.read_framebuffer == handle) {
-        cur_state->SetReadFramebuffer(0);
-    }
-    if (cur_state->draw.draw_framebuffer == handle) {
-        cur_state->SetDrawFramebuffer(0);
+    for (OpenGLState* state : states) {
+        if (state->draw.read_framebuffer == handle) {
+            if (state == cur_state) {
+                state->SetReadFramebuffer(0);
+            } else {
+                state->draw.read_framebuffer = 0;
+            }
+        }
+
+        if (state->draw.draw_framebuffer == handle) {
+            if (state == cur_state) {
+                state->SetDrawFramebuffer(0);
+            } else {
+                state->draw.draw_framebuffer = 0;
+            }
+        }
     }
 }
 

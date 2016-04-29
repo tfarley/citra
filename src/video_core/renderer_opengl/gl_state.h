@@ -9,6 +9,7 @@
 class OpenGLState {
 public:
     OpenGLState();
+    ~OpenGLState();
 
     /// Get a pointer to the currently bound state tracker object
     static OpenGLState* GetCurrentState();
@@ -51,7 +52,7 @@ public:
     void SetUniformBuffer(GLuint n_uniform_buffer);
     void SetShaderProgram(GLuint n_shader_program);
 
-    /// Resets and unbinds any references to the given resource in the current OpenGL state
+    /// Resets and unbinds any references to the given resource across all existing states
     static void ResetTexture(GLuint handle);
     static void ResetSampler(GLuint handle);
     static void ResetProgram(GLuint handle);
@@ -127,6 +128,4 @@ private:
         GLuint uniform_buffer; // GL_UNIFORM_BUFFER_BINDING
         GLuint shader_program; // GL_CURRENT_PROGRAM
     } draw;
-
-    static OpenGLState* cur_state;
 };
