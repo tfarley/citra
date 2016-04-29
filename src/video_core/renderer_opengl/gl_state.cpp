@@ -49,12 +49,9 @@ OpenGLState::OpenGLState() {
     logic_op = GL_COPY;
 
     for (auto& texture_unit : texture_units) {
+        texture_unit.texture_1d = 0;
         texture_unit.texture_2d = 0;
         texture_unit.sampler = 0;
-    }
-
-    for (auto& lut : lighting_luts) {
-        lut.texture_1d = 0;
     }
 
     active_texture_unit = GL_TEXTURE0;
@@ -69,6 +66,51 @@ OpenGLState::OpenGLState() {
 
 OpenGLState* OpenGLState::GetCurrentState() {
     return cur_state;
+}
+
+void OpenGLState::MakeCurrent() {
+    if (cur_state == this) {
+        return;
+    }
+
+    SetCullEnabled(cull.enabled);
+    SetCullMode(cull.mode);
+    SetCullFrontFace(cull.front_face);
+
+    SetDepthTestEnabled(depth.test_enabled);
+    SetDepthFunc(depth.test_func);
+    SetDepthWriteMask(depth.write_mask);
+
+    SetColorMask(color_mask.red_enabled, color_mask.green_enabled, color_mask.blue_enabled, color_mask.alpha_enabled);
+
+    SetStencilTestEnabled(stencil.test_enabled);
+    SetStencilFunc(stencil.test_func, stencil.test_ref, stencil.test_mask);
+    SetStencilOp(stencil.action_stencil_fail, stencil.action_depth_fail, stencil.action_depth_pass);
+    SetStencilWriteMask(stencil.write_mask);
+
+    SetBlendEnabled(blend.enabled);
+    SetBlendFunc(blend.src_rgb_func, blend.dst_rgb_func, blend.src_a_func, blend.dst_a_func);
+    SetBlendColor(blend.color.red, blend.color.green, blend.color.blue, blend.color.alpha);
+
+    SetLogicOp(logic_op);
+
+    for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
+        SetActiveTextureUnit(GL_TEXTURE0 + i);
+        SetTexture1D(texture_units[i].texture_1d);
+        SetTexture2D(texture_units[i].texture_2d);
+        SetSampler(texture_units[i].sampler);
+    }
+
+    SetActiveTextureUnit(active_texture_unit);
+
+    SetReadFramebuffer(draw.read_framebuffer);
+    SetDrawFramebuffer(draw.draw_framebuffer);
+    SetVertexArray(draw.vertex_array);
+    SetVertexBuffer(draw.vertex_buffer);
+    SetUniformBuffer(draw.uniform_buffer);
+    SetShaderProgram(draw.shader_program);
+
+    cur_state = this;
 }
 
 void OpenGLState::SetCullEnabled(bool n_enabled) {
@@ -158,14 +200,14 @@ void OpenGLState::SetStencilFunc(GLenum n_test_func, GLint n_test_ref, GLuint n_
 }
 
 void OpenGLState::SetStencilOp(GLenum n_action_stencil_fail, GLenum n_action_depth_fail, GLenum n_action_depth_pass) {
-    if (n_action_stencil_fail != cur_state->stencil.action_depth_fail ||
-            n_action_depth_fail != cur_state->stencil.action_depth_pass ||
-            n_action_depth_pass != cur_state->stencil.action_stencil_fail) {
+    if (n_action_stencil_fail != cur_state->stencil.action_stencil_fail ||
+            n_action_depth_fail != cur_state->stencil.action_depth_fail ||
+            n_action_depth_pass != cur_state->stencil.action_depth_pass) {
         glStencilOp(n_action_stencil_fail, n_action_depth_fail, n_action_depth_pass);
     }
-    stencil.action_depth_fail = n_action_stencil_fail;
-    stencil.action_depth_pass = n_action_depth_fail;
-    stencil.action_stencil_fail = n_action_depth_pass;
+    stencil.action_stencil_fail = n_action_stencil_fail;
+    stencil.action_depth_fail = n_action_depth_fail;
+    stencil.action_depth_pass = n_action_depth_pass;
 }
 
 void OpenGLState::SetStencilWriteMask(GLuint n_write_mask) {
@@ -225,6 +267,16 @@ void OpenGLState::SetLogicOp(GLenum n_logic_op) {
     logic_op = n_logic_op;
 }
 
+void OpenGLState::SetTexture1D(GLuint n_texture_1d) {
+    unsigned unit_index = active_texture_unit - GL_TEXTURE0;
+    ASSERT(unit_index < ARRAY_SIZE(texture_units));
+
+    if (n_texture_1d != cur_state->texture_units[unit_index].texture_1d) {
+        glBindTexture(GL_TEXTURE_1D, n_texture_1d);
+    }
+    texture_units[unit_index].texture_1d = n_texture_1d;
+}
+
 void OpenGLState::SetTexture2D(GLuint n_texture_2d) {
     unsigned unit_index = active_texture_unit - GL_TEXTURE0;
     ASSERT(unit_index < ARRAY_SIZE(texture_units));
@@ -243,16 +295,6 @@ void OpenGLState::SetSampler(GLuint n_sampler) {
         glBindSampler(unit_index, n_sampler);
     }
     texture_units[unit_index].sampler = n_sampler;
-}
-
-void OpenGLState::SetLUTTexture1D(GLuint n_texture_1d) {
-    unsigned unit_index = active_texture_unit - GL_TEXTURE3;
-    ASSERT(unit_index < ARRAY_SIZE(lighting_luts));
-
-    if (n_texture_1d != cur_state->lighting_luts[unit_index].texture_1d) {
-        glBindTexture(GL_TEXTURE_1D, n_texture_1d);
-    }
-    lighting_luts[unit_index].texture_1d = n_texture_1d;
 }
 
 void OpenGLState::SetActiveTextureUnit(GLenum n_active_texture_unit) {
@@ -304,85 +346,31 @@ void OpenGLState::SetShaderProgram(GLuint n_shader_program) {
     draw.shader_program = n_shader_program;
 }
 
-void OpenGLState::MakeCurrent() {
-    if (cur_state == this) {
-        return;
-    }
-
-    SetCullEnabled(cull.enabled);
-    SetCullMode(cull.mode);
-    SetCullFrontFace(cull.front_face);
-
-    SetDepthTestEnabled(depth.test_enabled);
-    SetDepthFunc(depth.test_func);
-    SetDepthWriteMask(depth.write_mask);
-
-    SetColorMask(color_mask.red_enabled, color_mask.green_enabled, color_mask.blue_enabled, color_mask.alpha_enabled);
-
-    SetStencilTestEnabled(stencil.test_enabled);
-    SetStencilFunc(stencil.test_func, stencil.test_ref, stencil.test_mask);
-    SetStencilOp(stencil.action_stencil_fail, stencil.action_depth_fail, stencil.action_depth_pass);
-    SetStencilWriteMask(stencil.write_mask);
-
-    SetBlendEnabled(blend.enabled);
-    SetBlendFunc(blend.src_rgb_func, blend.dst_rgb_func, blend.src_a_func, blend.dst_a_func);
-    SetBlendColor(blend.color.red, blend.color.green, blend.color.blue, blend.color.alpha);
-
-    SetLogicOp(logic_op);
-
-    for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
-        SetActiveTextureUnit(GL_TEXTURE0 + i);
-        SetTexture2D(texture_units[i].texture_2d);
-        SetSampler(texture_units[i].sampler);
-    }
-
-    for (unsigned i = 0; i < ARRAY_SIZE(lighting_luts); ++i) {
-        SetActiveTextureUnit(GL_TEXTURE3 + i);
-        SetLUTTexture1D(lighting_luts[i].texture_1d);
-    }
-
-    SetActiveTextureUnit(active_texture_unit);
-
-    SetReadFramebuffer(draw.read_framebuffer);
-    SetDrawFramebuffer(draw.draw_framebuffer);
-    SetVertexArray(draw.vertex_array);
-    SetVertexBuffer(draw.vertex_buffer);
-    SetUniformBuffer(draw.uniform_buffer);
-    SetShaderProgram(draw.shader_program);
-
-    cur_state = this;
-}
-
-GLenum OpenGLState::CheckFBStatus(GLenum target) {
-    GLenum fb_status = glCheckFramebufferStatus(target);
-    if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
-        const char* fb_description = (target == GL_READ_FRAMEBUFFER ? "READ" : (target == GL_DRAW_FRAMEBUFFER ? "DRAW" : "UNK"));
-        LOG_CRITICAL(Render_OpenGL, "OpenGL %s framebuffer check failed, status %X", fb_description, fb_status);
-    }
-
-    return fb_status;
-}
-
 void OpenGLState::ResetTexture(GLuint handle) {
     for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
+        if (cur_state->texture_units[i].texture_1d == handle) {
+            GLenum prev_active_texture_unit = cur_state->active_texture_unit;
+            cur_state->SetActiveTextureUnit(GL_TEXTURE0 + i);
+            cur_state->SetTexture1D(0);
+            cur_state->SetActiveTextureUnit(prev_active_texture_unit);
+        }
+
         if (cur_state->texture_units[i].texture_2d == handle) {
+            GLenum prev_active_texture_unit = cur_state->active_texture_unit;
             cur_state->SetActiveTextureUnit(GL_TEXTURE0 + i);
             cur_state->SetTexture2D(0);
-        }
-    }
-    for (unsigned i = 0; i < ARRAY_SIZE(lighting_luts); ++i) {
-        if (cur_state->lighting_luts[i].texture_1d == handle) {
-            cur_state->SetActiveTextureUnit(GL_TEXTURE3 + i);
-            cur_state->SetLUTTexture1D(0);
+            cur_state->SetActiveTextureUnit(prev_active_texture_unit);
         }
     }
 }
 
 void OpenGLState::ResetSampler(GLuint handle) {
     for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
-        if (cur_state->texture_units[i].texture_2d == handle) {
+        if (cur_state->texture_units[i].sampler == handle) {
+            GLenum prev_active_texture_unit = cur_state->active_texture_unit;
             cur_state->SetActiveTextureUnit(GL_TEXTURE0 + i);
             cur_state->SetSampler(0);
+            cur_state->SetActiveTextureUnit(prev_active_texture_unit);
         }
     }
 }
@@ -415,4 +403,14 @@ void OpenGLState::ResetFramebuffer(GLuint handle) {
     if (cur_state->draw.draw_framebuffer == handle) {
         cur_state->SetDrawFramebuffer(0);
     }
+}
+
+GLenum OpenGLState::CheckBoundFBStatus(GLenum target) {
+    GLenum fb_status = glCheckFramebufferStatus(target);
+    if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
+        const char* fb_description = (target == GL_READ_FRAMEBUFFER ? "READ" : (target == GL_DRAW_FRAMEBUFFER ? "DRAW" : "UNK"));
+        LOG_CRITICAL(Render_OpenGL, "OpenGL %s framebuffer check failed, status %X", fb_description, fb_status);
+    }
+
+    return fb_status;
 }

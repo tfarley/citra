@@ -91,7 +91,7 @@ RasterizerOpenGL::RasterizerOpenGL() : shader_dirty(true) {
     for (size_t i = 0; i < lighting_luts.size(); ++i) {
         lighting_luts[i].Create();
         state.SetActiveTextureUnit(GL_TEXTURE3 + i);
-        state.SetLUTTexture1D(lighting_luts[i].handle);
+        state.SetTexture1D(lighting_luts[i].handle);
         glTexImage1D(GL_TEXTURE_1D, 0, GL_RGBA32F, 256, 0, GL_RGBA, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -166,7 +166,7 @@ void RasterizerOpenGL::DrawTriangles() {
     bool has_stencil = regs.framebuffer.depth_format == Pica::Regs::DepthFormat::D24S8;
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, (has_stencil && depth_surface != nullptr) ? depth_surface->texture.handle : 0, 0);
 
-    if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (OpenGLState::CheckBoundFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         return;
     }
 
@@ -616,13 +616,12 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
     utility_state.MakeCurrent();
 
     utility_state.SetDrawFramebuffer(framebuffer.handle);
-    // TODO: When scissor test is implemented, need to disable scissor test in the state here so Clear call isn't affected
 
     if (dst_type == SurfaceType::Color || dst_type == SurfaceType::Texture) {
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dst_surface->texture.handle, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
-        if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        if (OpenGLState::CheckBoundFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             old_state->MakeCurrent();
             return false;
         }
@@ -707,7 +706,7 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, dst_surface->texture.handle, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
 
-        if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        if (OpenGLState::CheckBoundFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             old_state->MakeCurrent();
             return false;
         }
@@ -725,7 +724,7 @@ bool RasterizerOpenGL::AccelerateFill(const GPU::Regs::MemoryFillConfig& config)
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
         glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, dst_surface->texture.handle, 0);
 
-        if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        if (OpenGLState::CheckBoundFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             old_state->MakeCurrent();
             return false;
         }

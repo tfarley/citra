@@ -145,12 +145,12 @@ bool RasterizerCacheOpenGL::BlitTextures(GLuint src_tex, GLuint dst_tex, CachedS
         buffers = GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT;
     }
 
-    if (OpenGLState::CheckFBStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (OpenGLState::CheckBoundFBStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         old_state->MakeCurrent();
         return false;
     }
 
-    if (OpenGLState::CheckFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    if (OpenGLState::CheckBoundFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         old_state->MakeCurrent();
         return false;
     }

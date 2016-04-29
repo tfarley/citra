@@ -10,22 +10,13 @@ class OpenGLState {
 public:
     OpenGLState();
 
+    /// Get a pointer to the currently bound state tracker object
     static OpenGLState* GetCurrentState();
 
     /// Apply this state as the current OpenGL state
     void MakeCurrent();
 
-    /// Check the status of the current OpenGL read or draw framebuffer configuration
-    static GLenum CheckFBStatus(GLenum target);
-
-    /// Resets and unbinds any references to the given resource in the current OpenGL state
-    static void ResetTexture(GLuint handle);
-    static void ResetSampler(GLuint handle);
-    static void ResetProgram(GLuint handle);
-    static void ResetBuffer(GLuint handle);
-    static void ResetVertexArray(GLuint handle);
-    static void ResetFramebuffer(GLuint handle);
-
+    /// Setter functions for OpenGL state
     void SetCullEnabled(bool n_enabled);
     void SetCullMode(GLenum n_mode);
     void SetCullFrontFace(GLenum n_front_face);
@@ -47,10 +38,9 @@ public:
 
     void SetLogicOp(GLenum n_logic_op);
 
+    void SetTexture1D(GLuint n_texture_1d);
     void SetTexture2D(GLuint n_texture_2d);
     void SetSampler(GLuint n_sampler);
-
-    void SetLUTTexture1D(GLuint n_texture_1d);
 
     void SetActiveTextureUnit(GLenum n_active_texture_unit);
 
@@ -60,6 +50,17 @@ public:
     void SetVertexBuffer(GLuint n_vertex_buffer);
     void SetUniformBuffer(GLuint n_uniform_buffer);
     void SetShaderProgram(GLuint n_shader_program);
+
+    /// Resets and unbinds any references to the given resource in the current OpenGL state
+    static void ResetTexture(GLuint handle);
+    static void ResetSampler(GLuint handle);
+    static void ResetProgram(GLuint handle);
+    static void ResetBuffer(GLuint handle);
+    static void ResetVertexArray(GLuint handle);
+    static void ResetFramebuffer(GLuint handle);
+
+    /// Check the status of the currently bound OpenGL read or draw framebuffer configuration
+    static GLenum CheckBoundFBStatus(GLenum target);
 
 private:
     struct {
@@ -111,13 +112,10 @@ private:
 
     // 3 texture units - one for each that is used in PICA fragment shader emulation
     struct {
+        GLuint texture_1d; // GL_TEXTURE_BINDING_1D
         GLuint texture_2d; // GL_TEXTURE_BINDING_2D
         GLuint sampler; // GL_SAMPLER_BINDING
-    } texture_units[3];
-
-    struct {
-        GLuint texture_1d; // GL_TEXTURE_BINDING_1D
-    } lighting_luts[6];
+    } texture_units[9];
 
     GLenum active_texture_unit; // GL_ACTIVE_TEXTURE
 
