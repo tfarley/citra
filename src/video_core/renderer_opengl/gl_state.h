@@ -17,39 +17,74 @@ public:
     /// Apply this state as the current OpenGL state
     void MakeCurrent();
 
-    /// Setter functions for OpenGL state
+    /// Getter and setter functions for OpenGL state
+    inline bool GetCullEnabled() { return cull.enabled; }
     void SetCullEnabled(bool n_enabled);
+    inline GLenum GetCullMode() { return cull.mode; }
     void SetCullMode(GLenum n_mode);
+    inline GLenum GetCullFrontFace() { return cull.front_face; }
     void SetCullFrontFace(GLenum n_front_face);
 
+    inline bool GetDepthTestEnabled() { return depth.test_enabled; }
     void SetDepthTestEnabled(bool n_test_enabled);
+    inline GLenum GetDepthFunc() { return depth.test_func; }
     void SetDepthFunc(GLenum n_test_func);
+    inline GLboolean GetDepthWriteMask() { return depth.write_mask; }
     void SetDepthWriteMask(GLboolean n_write_mask);
 
-    void SetColorMask(GLboolean n_red_enabled, GLboolean n_green_enabled, GLboolean n_blue_enabled, GLboolean n_alpha_enabled);
+    inline std::tuple<GLboolean, GLboolean, GLboolean, GLboolean> GetColorMask() {
+        return std::make_tuple(color_mask.red_enabled, color_mask.green_enabled, color_mask.blue_enabled, color_mask.alpha_enabled);
+    }
+    void SetColorMask(std::tuple<GLboolean, GLboolean, GLboolean, GLboolean> n_rgba_enabled);
 
+    inline bool GetStencilTestEnabled() { return stencil.test_enabled; }
     void SetStencilTestEnabled(bool n_test_enabled);
-    void SetStencilFunc(GLenum n_test_func, GLint n_test_ref, GLuint n_test_mask);
-    void SetStencilOp(GLenum n_action_stencil_fail, GLenum n_action_depth_fail, GLenum n_action_depth_pass);
+    inline std::tuple<GLenum, GLint, GLint> GetStencilFunc() {
+        return std::make_tuple(stencil.test_func, stencil.test_ref, stencil.test_mask);
+    }
+    void SetStencilFunc(std::tuple<GLenum, GLint, GLint> n_funcs);
+    inline std::tuple<GLenum, GLenum, GLenum> GetStencilOp() {
+        return std::make_tuple(stencil.action_stencil_fail, stencil.action_depth_fail, stencil.action_depth_pass);
+    }
+    void SetStencilOp(std::tuple<GLenum, GLenum, GLenum> n_actions);
+    inline GLuint GetStencilWriteMask() { return stencil.write_mask; }
     void SetStencilWriteMask(GLuint n_write_mask);
 
+    inline bool GetBlendEnabled() { return blend.enabled; }
     void SetBlendEnabled(bool n_enabled);
-    void SetBlendFunc(GLenum n_src_rgb_func, GLenum n_dst_rgb_func, GLenum n_src_a_func, GLenum n_dst_a_func);
-    void SetBlendColor(GLclampf n_red, GLclampf n_green, GLclampf n_blue, GLclampf n_alpha);
+    inline std::tuple<GLenum, GLenum, GLenum, GLenum> GetBlendFunc() {
+        return std::make_tuple(blend.src_rgb_func, blend.dst_rgb_func, blend.src_a_func, blend.dst_a_func);
+    }
+    void SetBlendFunc(std::tuple<GLenum, GLenum, GLenum, GLenum> n_funcs);
+    inline std::tuple<GLclampf, GLclampf, GLclampf, GLclampf> GetBlendColor() {
+        return std::make_tuple(blend.color.red, blend.color.green, blend.color.blue, blend.color.alpha);
+    }
+    void SetBlendColor(std::tuple<GLclampf, GLclampf, GLclampf, GLclampf> n_color);
 
+    inline GLenum GetLogicOp() { return logic_op; }
     void SetLogicOp(GLenum n_logic_op);
 
+    inline GLuint GetTexture1D() { return texture_units[active_texture_unit - GL_TEXTURE0].texture_1d; }
     void SetTexture1D(GLuint n_texture_1d);
+    inline GLuint GetTexture2D() { return texture_units[active_texture_unit - GL_TEXTURE0].texture_2d; }
     void SetTexture2D(GLuint n_texture_2d);
+    inline GLuint GetSampler() { return texture_units[active_texture_unit - GL_TEXTURE0].sampler; }
     void SetSampler(GLuint n_sampler);
 
+    inline GLenum GetActiveTextureUnit() { return active_texture_unit; }
     void SetActiveTextureUnit(GLenum n_active_texture_unit);
 
+    inline GLuint GetReadFramebuffer() { return draw.read_framebuffer; }
     void SetReadFramebuffer(GLuint n_read_framebuffer);
+    inline GLuint GetDrawFramebuffer() { return draw.draw_framebuffer; }
     void SetDrawFramebuffer(GLuint n_draw_framebuffer);
+    inline GLuint GetVertexArray() { return draw.vertex_array; }
     void SetVertexArray(GLuint n_vertex_array);
+    inline GLuint GetVertexBuffer() { return draw.vertex_buffer; }
     void SetVertexBuffer(GLuint n_vertex_buffer);
+    inline GLuint GetUniformBuffer() { return draw.uniform_buffer; }
     void SetUniformBuffer(GLuint n_uniform_buffer);
+    inline GLuint GetShaderProgram() { return draw.shader_program; }
     void SetShaderProgram(GLuint n_shader_program);
 
     /// Resets and unbinds any references to the given resource across all existing states
@@ -62,6 +97,12 @@ public:
 
     /// Check the status of the currently bound OpenGL read or draw framebuffer configuration
     static GLenum CheckBoundFBStatus(GLenum target);
+
+    /// Manipulates the current state to prepare for pixel transfer, and returns a copy of the old state
+    static OpenGLState ApplyTransferState(GLuint src_tex, GLuint read_framebuffer, GLuint dst_tex, GLuint draw_framebuffer);
+
+    /// Returns the old state before transfer state changes were made
+    static void UndoTransferState(OpenGLState &old_state);
 
 private:
     struct {

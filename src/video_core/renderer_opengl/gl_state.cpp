@@ -82,26 +82,26 @@ void OpenGLState::MakeCurrent() {
         return;
     }
 
-    SetCullEnabled(cull.enabled);
-    SetCullMode(cull.mode);
-    SetCullFrontFace(cull.front_face);
+    SetCullEnabled(GetCullEnabled());
+    SetCullMode(GetCullMode());
+    SetCullFrontFace(GetCullFrontFace());
 
-    SetDepthTestEnabled(depth.test_enabled);
-    SetDepthFunc(depth.test_func);
-    SetDepthWriteMask(depth.write_mask);
+    SetDepthTestEnabled(GetDepthTestEnabled());
+    SetDepthFunc(GetDepthFunc());
+    SetDepthWriteMask(GetDepthWriteMask());
 
-    SetColorMask(color_mask.red_enabled, color_mask.green_enabled, color_mask.blue_enabled, color_mask.alpha_enabled);
+    SetColorMask(GetColorMask());
 
-    SetStencilTestEnabled(stencil.test_enabled);
-    SetStencilFunc(stencil.test_func, stencil.test_ref, stencil.test_mask);
-    SetStencilOp(stencil.action_stencil_fail, stencil.action_depth_fail, stencil.action_depth_pass);
-    SetStencilWriteMask(stencil.write_mask);
+    SetStencilTestEnabled(GetStencilTestEnabled());
+    SetStencilFunc(GetStencilFunc());
+    SetStencilOp(GetStencilOp());
+    SetStencilWriteMask(GetStencilWriteMask());
 
-    SetBlendEnabled(blend.enabled);
-    SetBlendFunc(blend.src_rgb_func, blend.dst_rgb_func, blend.src_a_func, blend.dst_a_func);
-    SetBlendColor(blend.color.red, blend.color.green, blend.color.blue, blend.color.alpha);
+    SetBlendEnabled(GetBlendEnabled());
+    SetBlendFunc(GetBlendFunc());
+    SetBlendColor(GetBlendColor());
 
-    SetLogicOp(logic_op);
+    SetLogicOp(GetLogicOp());
 
     GLenum prev_active_texture_unit = active_texture_unit;
     for (unsigned i = 0; i < ARRAY_SIZE(texture_units); ++i) {
@@ -114,14 +114,14 @@ void OpenGLState::MakeCurrent() {
     active_texture_unit = prev_active_texture_unit;
     glActiveTexture(cur_state->active_texture_unit);
 
-    SetActiveTextureUnit(active_texture_unit);
+    SetActiveTextureUnit(GetActiveTextureUnit());
 
-    SetReadFramebuffer(draw.read_framebuffer);
-    SetDrawFramebuffer(draw.draw_framebuffer);
-    SetVertexArray(draw.vertex_array);
-    SetVertexBuffer(draw.vertex_buffer);
-    SetUniformBuffer(draw.uniform_buffer);
-    SetShaderProgram(draw.shader_program);
+    SetReadFramebuffer(GetReadFramebuffer());
+    SetDrawFramebuffer(GetDrawFramebuffer());
+    SetVertexArray(GetVertexArray());
+    SetVertexBuffer(GetVertexBuffer());
+    SetUniformBuffer(GetUniformBuffer());
+    SetShaderProgram(GetShaderProgram());
 
     cur_state = this;
 }
@@ -176,7 +176,10 @@ void OpenGLState::SetDepthWriteMask(GLboolean n_write_mask) {
     depth.write_mask = n_write_mask;
 }
 
-void OpenGLState::SetColorMask(GLboolean n_red_enabled, GLboolean n_green_enabled, GLboolean n_blue_enabled, GLboolean n_alpha_enabled) {
+void OpenGLState::SetColorMask(std::tuple<GLboolean, GLboolean, GLboolean, GLboolean> n_rgba_enabled) {
+    GLboolean n_red_enabled, n_green_enabled, n_blue_enabled, n_alpha_enabled;
+    std::tie(n_red_enabled, n_green_enabled, n_blue_enabled, n_alpha_enabled) = n_rgba_enabled;
+
     if (n_red_enabled != cur_state->color_mask.red_enabled ||
             n_green_enabled != cur_state->color_mask.green_enabled ||
             n_blue_enabled != cur_state->color_mask.blue_enabled ||
@@ -201,7 +204,11 @@ void OpenGLState::SetStencilTestEnabled(bool n_test_enabled) {
     stencil.test_enabled = n_test_enabled;
 }
 
-void OpenGLState::SetStencilFunc(GLenum n_test_func, GLint n_test_ref, GLuint n_test_mask) {
+void OpenGLState::SetStencilFunc(std::tuple<GLenum, GLint, GLint> n_funcs) {
+    GLenum n_test_func;
+    GLint n_test_ref, n_test_mask;
+    std::tie(n_test_func, n_test_ref, n_test_mask) = n_funcs;
+
     if (n_test_func != cur_state->stencil.test_func ||
             n_test_ref != cur_state->stencil.test_ref ||
             n_test_mask != cur_state->stencil.test_mask) {
@@ -212,7 +219,10 @@ void OpenGLState::SetStencilFunc(GLenum n_test_func, GLint n_test_ref, GLuint n_
     stencil.test_mask = n_test_mask;
 }
 
-void OpenGLState::SetStencilOp(GLenum n_action_stencil_fail, GLenum n_action_depth_fail, GLenum n_action_depth_pass) {
+void OpenGLState::SetStencilOp(std::tuple<GLenum, GLenum, GLenum> n_actions) {
+    GLenum n_action_stencil_fail, n_action_depth_fail, n_action_depth_pass;
+    std::tie(n_action_stencil_fail, n_action_depth_fail, n_action_depth_pass) = n_actions;
+
     if (n_action_stencil_fail != cur_state->stencil.action_stencil_fail ||
             n_action_depth_fail != cur_state->stencil.action_depth_fail ||
             n_action_depth_pass != cur_state->stencil.action_depth_pass) {
@@ -245,7 +255,10 @@ void OpenGLState::SetBlendEnabled(bool n_enabled) {
     blend.enabled = n_enabled;
 }
 
-void OpenGLState::SetBlendFunc(GLenum n_src_rgb_func, GLenum n_dst_rgb_func, GLenum n_src_a_func, GLenum n_dst_a_func) {
+void OpenGLState::SetBlendFunc(std::tuple<GLenum, GLenum, GLenum, GLenum> n_funcs) {
+    GLenum n_src_rgb_func, n_dst_rgb_func, n_src_a_func, n_dst_a_func;
+    std::tie(n_src_rgb_func, n_dst_rgb_func, n_src_a_func, n_dst_a_func) = n_funcs;
+
     if (n_src_rgb_func != cur_state->blend.src_rgb_func ||
             n_dst_rgb_func != cur_state->blend.dst_rgb_func ||
             n_src_a_func != cur_state->blend.src_a_func ||
@@ -259,7 +272,10 @@ void OpenGLState::SetBlendFunc(GLenum n_src_rgb_func, GLenum n_dst_rgb_func, GLe
     blend.dst_a_func = n_dst_a_func;
 }
 
-void OpenGLState::SetBlendColor(GLclampf n_red, GLclampf n_green, GLclampf n_blue, GLclampf n_alpha) {
+void OpenGLState::SetBlendColor(std::tuple<GLclampf, GLclampf, GLclampf, GLclampf> n_color) {
+    GLclampf n_red, n_green, n_blue, n_alpha;
+    std::tie(n_red, n_green, n_blue, n_alpha) = n_color;
+
     if (n_red != cur_state->blend.color.red ||
             n_green != cur_state->blend.color.green ||
             n_blue != cur_state->blend.color.blue ||
@@ -476,4 +492,32 @@ GLenum OpenGLState::CheckBoundFBStatus(GLenum target) {
     }
 
     return fb_status;
+}
+
+OpenGLState OpenGLState::ApplyTransferState(GLuint src_tex, GLuint read_framebuffer, GLuint dst_tex, GLuint draw_framebuffer) {
+    OpenGLState old_state = *cur_state;
+
+    cur_state->SetColorMask(std::make_tuple<>(true, true, true, true));
+    cur_state->SetDepthWriteMask(true);
+    cur_state->SetStencilWriteMask(true);
+    if (src_tex != 0) {
+        cur_state->ResetTexture(src_tex);
+    }
+    cur_state->SetReadFramebuffer(read_framebuffer);
+    if (dst_tex != 0) {
+        cur_state->ResetTexture(dst_tex);
+    }
+    cur_state->SetDrawFramebuffer(draw_framebuffer);
+
+    return old_state;
+}
+
+void OpenGLState::UndoTransferState(OpenGLState &old_state) {
+    cur_state->SetColorMask(old_state.GetColorMask());
+    cur_state->SetDepthWriteMask(old_state.GetDepthWriteMask());
+    cur_state->SetStencilWriteMask(old_state.GetStencilWriteMask());
+    cur_state->SetReadFramebuffer(old_state.GetReadFramebuffer());
+    cur_state->SetDrawFramebuffer(old_state.GetDrawFramebuffer());
+
+    // NOTE: Textures that were reset in ApplyTransferState() are NOT restored
 }

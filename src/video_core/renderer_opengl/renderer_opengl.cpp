@@ -108,6 +108,7 @@ RendererOpenGL::~RendererOpenGL() {
 
 /// Swap buffers (render frame)
 void RendererOpenGL::SwapBuffers() {
+    OpenGLState* old_state = OpenGLState::GetCurrentState();
     state.MakeCurrent();
 
     for (int i : {0, 1}) {
@@ -156,6 +157,8 @@ void RendererOpenGL::SwapBuffers() {
     render_window->SwapBuffers();
 
     profiler.BeginFrame();
+
+    old_state->MakeCurrent();
 
     RefreshRasterizerSetting();
 

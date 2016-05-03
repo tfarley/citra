@@ -105,15 +105,7 @@ static void MortonCopyPixels(CachedSurface::PixelFormat pixel_format, u32 width,
 bool RasterizerCacheOpenGL::BlitTextures(GLuint src_tex, GLuint dst_tex, CachedSurface::SurfaceType type, const MathUtil::Rectangle<int>& src_rect, const MathUtil::Rectangle<int>& dst_rect) {
     using SurfaceType = CachedSurface::SurfaceType;
 
-    OpenGLState* old_state = OpenGLState::GetCurrentState();
-    utility_state.MakeCurrent();
-
-    // Make sure textures aren't bound to texture units, since going to bind them to framebuffer components
-    OpenGLState::ResetTexture(src_tex);
-    OpenGLState::ResetTexture(dst_tex);
-
-    utility_state.SetReadFramebuffer(transfer_framebuffers[0].handle);
-    utility_state.SetDrawFramebuffer(transfer_framebuffers[1].handle);
+    OpenGLState old_state = OpenGLState::ApplyTransferState(src_tex, transfer_framebuffers[0].handle, dst_tex, transfer_framebuffers[1].handle);
 
     u32 buffers = 0;
 
@@ -146,12 +138,12 @@ bool RasterizerCacheOpenGL::BlitTextures(GLuint src_tex, GLuint dst_tex, CachedS
     }
 
     if (OpenGLState::CheckBoundFBStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        old_state->MakeCurrent();
+        OpenGLState::UndoTransferState(old_state);
         return false;
     }
 
     if (OpenGLState::CheckBoundFBStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        old_state->MakeCurrent();
+        OpenGLState::UndoTransferState(old_state);
         return false;
     }
 
@@ -159,7 +151,7 @@ bool RasterizerCacheOpenGL::BlitTextures(GLuint src_tex, GLuint dst_tex, CachedS
                       dst_rect.left, dst_rect.top, dst_rect.right, dst_rect.bottom,
                       buffers, buffers == GL_COLOR_BUFFER_BIT ? GL_LINEAR : GL_NEAREST);
 
-    old_state->MakeCurrent();
+    OpenGLState::UndoTransferState(old_state);
 
     return true;
 }
@@ -178,11 +170,11 @@ void RasterizerCacheOpenGL::AllocateSurfaceTexture(GLuint texture, CachedSurface
     // Allocate an uninitialized texture of appropriate size and format for the surface
     using SurfaceType = CachedSurface::SurfaceType;
 
-    OpenGLState* old_state = OpenGLState::GetCurrentState();
-    utility_state.MakeCurrent();
-
-    utility_state.SetActiveTextureUnit(GL_TEXTURE0);
-    utility_state.SetTexture2D(texture);
+    OpenGLState* cur_state = OpenGLState::GetCurrentState();
+    GLenum old_active_texture = cur_state->GetActiveTextureUnit();
+    cur_state->SetActiveTextureUnit(GL_TEXTURE0);
+    GLuint old_texture = cur_state->GetTexture2D();
+    cur_state->SetTexture2D(texture);
 
     SurfaceType type = CachedSurface::GetFormatType(pixel_format);
 
@@ -206,7 +198,8 @@ void RasterizerCacheOpenGL::AllocateSurfaceTexture(GLuint texture, CachedSurface
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    old_state->MakeCurrent();
+    cur_state->SetTexture2D(old_texture);
+    cur_state->SetActiveTextureUnit(old_active_texture);
 }
 
 MICROPROFILE_DEFINE(OpenGL_SurfaceUpload, "OpenGL", "Surface Upload", MP_RGB(128, 64, 192));
@@ -288,11 +281,11 @@ CachedSurface* RasterizerCacheOpenGL::GetSurface(const CachedSurface& params, bo
         Memory::RasterizerFlushRegion(params.addr, params_size);
 
         // Load data from memory to the new surface
-        OpenGLState* old_state = OpenGLState::GetCurrentState();
-        utility_state.MakeCurrent();
-
-        utility_state.SetActiveTextureUnit(GL_TEXTURE0);
-        utility_state.SetTexture2D(new_surface->texture.handle);
+        OpenGLState* cur_state = OpenGLState::GetCurrentState();
+        GLenum old_active_texture = cur_state->GetActiveTextureUnit();
+        cur_state->SetActiveTextureUnit(GL_TEXTURE0);
+        GLuint old_texture = cur_state->GetTexture2D();
+        cur_state->SetTexture2D(new_surface->texture.handle);
 
         glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)new_surface->stride);
         if (!new_surface->is_tiled) {
@@ -374,7 +367,8 @@ CachedSurface* RasterizerCacheOpenGL::GetSurface(const CachedSurface& params, bo
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        old_state->MakeCurrent();
+        cur_state->SetTexture2D(old_texture);
+        cur_state->SetActiveTextureUnit(old_active_texture);
     }
 
     Memory::RasterizerMarkRegionCached(new_surface->addr, new_surface->size, 1);
@@ -596,9 +590,6 @@ void RasterizerCacheOpenGL::FlushSurface(CachedSurface* surface) {
         return;
     }
 
-    OpenGLState* old_state = OpenGLState::GetCurrentState();
-    utility_state.MakeCurrent();
-
     OGLTexture unscaled_tex;
     GLuint texture_to_flush = surface->texture.handle;
 
@@ -614,8 +605,11 @@ void RasterizerCacheOpenGL::FlushSurface(CachedSurface* surface) {
         texture_to_flush = unscaled_tex.handle;
     }
 
-    utility_state.SetActiveTextureUnit(GL_TEXTURE0);
-    utility_state.SetTexture2D(texture_to_flush);
+    OpenGLState* cur_state = OpenGLState::GetCurrentState();
+    GLenum old_active_texture = cur_state->GetActiveTextureUnit();
+    cur_state->SetActiveTextureUnit(GL_TEXTURE0);
+    GLuint old_texture = cur_state->GetTexture2D();
+    cur_state->SetTexture2D(texture_to_flush);
 
     glPixelStorei(GL_PACK_ROW_LENGTH, (GLint)surface->stride);
     if (!surface->is_tiled) {
@@ -664,7 +658,8 @@ void RasterizerCacheOpenGL::FlushSurface(CachedSurface* surface) {
 
     surface->dirty = false;
 
-    old_state->MakeCurrent();
+    cur_state->SetTexture2D(old_texture);
+    cur_state->SetActiveTextureUnit(old_active_texture);
 }
 
 void RasterizerCacheOpenGL::FlushRegion(PAddr addr, u32 size, const CachedSurface* skip_surface, bool invalidate) {
