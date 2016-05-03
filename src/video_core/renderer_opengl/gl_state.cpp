@@ -3,6 +3,8 @@
 // Refer to the license.txt file included.
 
 #include <set>
+#include <tuple>
+
 #include <glad/glad.h>
 
 #include "common/assert.h"

@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstring>
 #include <iterator>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>

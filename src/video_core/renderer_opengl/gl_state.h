@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <tuple>
+
 #include <glad/glad.h>
 
 class OpenGLState {
